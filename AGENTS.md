@@ -50,6 +50,7 @@ rojo serve default.project.json --address 127.0.0.1
 - In Play, output shows `[Game Boilerplate] Server services ready`, `Client controllers ready` and a Packet round trip. Both Bootstraps set a `Ready` attribute.
 - `lune run check` is the one command to run after every change. It formats `src` and `.lune` with StyLua, regenerates the sourcemap, runs luau-lsp type and lint analysis, and does a Rojo build. Fix every error it reports and rerun it until it passes.
 - `rojo build` output is code-only, not a replacement for the authored place.
+- **Starting a new game from this boilerplate:** set `GameConfig.Name`, set `[creator] id` in `asphalt.toml` to the game's Roblox group ID, put the game's admins in `Config/AdminConfig.luau`, and add `servePlaceIds` once the place exists.
 
 ## Layout
 
@@ -57,7 +58,7 @@ rojo serve default.project.json --address 127.0.0.1
 | --- | --- | --- |
 | `src/server` | `ServerScriptService` | `Bootstrap.server.luau`, `Registry.luau`, `Services/`, `Components/` (create when needed) |
 | `src/client` | `StarterPlayer.StarterPlayerScripts` | `Bootstrap.client.luau`, `Registry.luau`, `Controllers/`, `Components/` |
-| `src/shared` | `ReplicatedStorage` | `Lifecycle`, `Packet/`, `Packets`, `PlayerData/`, `Config/`, `Utils/` |
+| `src/shared` | `ReplicatedStorage` | `Lifecycle`, `Packet/`, `Packets`, `PlayerData/`, `Assets` (generated), `Config/`, `Utils/` |
 | `Packages` | `ReplicatedStorage.Packages` | Generated Wally dependencies |
 
 - Edit code on disk; Rojo syncs it. Code lives directly in the service roots, with no Client/Server/Shared wrapper folders.
@@ -66,7 +67,7 @@ rojo serve default.project.json --address 127.0.0.1
 - Server-only code (secrets, rules, data) belongs in `src/server`. Everything in `src/shared` is visible to clients.
 - Put tunable constants in `src/shared/Config` as frozen tables, or in server modules if clients must not see them.
 - Put pure logic in plain modules (such as a system's `Catalog.luau`) with no service dependencies.
-- Keep `src/shared` tidy: its root holds only the framework (`Lifecycle`, `Packet`, `Packets`, `PlayerData`) and folders. Reusable, game-agnostic helpers used by more than one system go in `src/shared/Utils` (such as `Utils/RateLimit`), one module per helper. Server-only helpers go in `src/server/Utils`. Helpers used by a single system stay inside that system's folder.
+- Keep `src/shared` tidy: its root holds only the framework (`Lifecycle`, `Packet`, `Packets`, `PlayerData`), the generated `Assets`, and folders. Reusable, game-agnostic helpers used by more than one system go in `src/shared/Utils` (such as `Utils/RateLimit`), one module per helper. Server-only helpers go in `src/server/Utils`. Helpers used by a single system stay inside that system's folder.
 
 ## Systems
 
@@ -407,3 +408,12 @@ Scribe owns `MarketplaceService.ProcessReceipt` once any product is declared. No
 - Add debug panels inside the `Iris:Connect` callback in `DebugController`, or in a `DebugController/Panels.luau` child once there are several. Like the admin console, Iris builds UI in code; the "build UI in Studio" rule does not apply to it.
 - Debug panels only show and tweak values. Anything that changes server state goes through a Conch command or a Packet request that the server validates, never straight from an Iris button.
 - Keep work in the callback light: it runs every frame for admins, even while the window is closed.
+
+### Assets
+
+Images, sounds, videos, animations and models that code references live as files in `assets/` and are uploaded with [Asphalt](https://github.com/jackTabsCode/asphalt). Art placed in the world is still built and saved in Studio.
+
+- **Syncing:** `lune run assets` uploads new or changed files under the group in `asphalt.toml` and regenerates `src/shared/Assets.luau`. It refuses to run while `[creator] id` is the `0` placeholder. Uploads need an Open Cloud API key with `asset:read` and `asset:write`, created under that group, in the `ASPHALT_API_KEY` environment variable. Never put the key in a file in the repo. `lune run assets debug` processes files locally without uploading.
+- **Using an asset:** `require(ReplicatedStorage.Assets)` gives a typed table that mirrors `assets/` without file extensions: `assets/Images/Logo.png` is `Assets.Images.Logo`, an `rbxassetid://` string. Never hard-code asset IDs in code.
+- **Already on Roblox:** add existing assets to `[inputs.Assets.web]` in `asphalt.toml` (`"Images/Logo.png" = { id = 123 }`) so they appear in `Assets` without uploading.
+- Commit `assets/`, `asphalt.lock.toml` and the generated `Assets.luau` so others can build without an API key. Never edit `Assets.luau` by hand; StyLua skips it.
