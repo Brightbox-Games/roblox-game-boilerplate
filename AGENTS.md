@@ -34,7 +34,7 @@
 
 ## Setup and checks
 
-Tools are pinned in `rokit.toml`: Rojo, Wally, StyLua, wally-package-types, luau-lsp, Lune and Asphalt. The only prerequisite is [Rokit](https://github.com/rojo-rbx/rokit). Project scripts are Lune scripts in `.lune/`, run from the project root.
+Tools are pinned in `rokit.toml`: Rojo, Wally, StyLua, wally-package-types, luau-lsp, Lune, Asphalt, and the offline engine tools ree, ror and rur-native (see Testing, profiling and previews). The only prerequisite is [Rokit](https://github.com/rojo-rbx/rokit). Project scripts are Lune scripts in `.lune/`, run from the project root.
 
 ```sh
 rokit install
@@ -48,7 +48,7 @@ rojo serve default.project.json --address 127.0.0.1
 - Connect the Rojo plugin in Studio to `localhost:34873`. Once the game has a place, add `"servePlaceIds": [<placeId>]` to `default.project.json`.
 - In Studio, enable **Game Settings > Security > Enable Studio Access to API Services** (the place must be published). Without it (or in an unpublished place), Scribe saves to an in-memory store: everything works, but data resets when Play stops, and output shows `[ProfileStore]: Roblox API services unavailable - data will not be saved`. Live servers always have DataStore access.
 - In Play, output shows `[Game Boilerplate] Server services ready`, `Client controllers ready` and a Packet round trip. Both Bootstraps set a `Ready` attribute.
-- `lune run check` is the one command to run after every change. It formats `src` and `.lune` with StyLua, regenerates the sourcemap, runs luau-lsp type and lint analysis, and does a Rojo build. Fix every error it reports and rerun it until it passes.
+- `lune run check` is the one command to run after every change. It formats `src`, `.lune` and `tests` with StyLua, regenerates the sourcemap, runs luau-lsp type and lint analysis, and does a Rojo build. Fix every error it reports and rerun it until it passes.
 - `rojo build` output is code-only, not a replacement for the authored place.
 - **Starting a new game from this boilerplate:** set `GameConfig.Name`, set `[creator] id` in `asphalt.toml` to the game's Roblox group ID, put the game's admins in `Config/AdminConfig.luau`, and add `servePlaceIds` once the place exists.
 
@@ -419,3 +419,22 @@ Images, sounds, videos, animations and models that code references live as files
 - **Using an asset:** `require(ReplicatedStorage.Assets)` gives a typed table that mirrors `assets/` without file extensions: `assets/Images/Logo.png` is `Assets.Images.Logo`, an `rbxassetid://` string. Never hard-code asset IDs in code.
 - **Already on Roblox:** add existing assets to `[inputs.Assets.web]` in `asphalt.toml` (`"Images/Logo.png" = { id = 123 }`) so they appear in `Assets` without uploading.
 - Commit `assets/`, `asphalt.lock.toml` and the generated `Assets.luau` so others can build without an API key. Never edit `Assets.luau` by hand; StyLua skips it.
+
+### Testing, profiling and previews
+
+Three offline tools run the game's own Luau and draw Roblox content without Studio: **ree** (an emulated engine), **ror** (a 3D renderer) and **rur-native** (a UI renderer), all from [Anime-Vanguards](https://github.com/Anime-Vanguards). Use them before reaching for the Studio MCP for anything they cover; keep the Studio MCP for authoring Studio UI and world content, and for what they cannot simulate (physics beyond free fall, a client and server talking to each other). They are pinned exactly: their flags and output formats change between versions, so re-run `lune run test` and the commands below after a bump. They are GPL-2.0: use them as tools, never copy their code into this repo. Write their outputs under `build/` (Git-ignored).
+
+**Tests (`lune run test`).** Runs every harness in `tests/Server` (as a Play-mode server) and `tests/Client` (as a client) through ree and fails on any `FAIL` line, any error, or a harness that never prints `@done`. Run it after changing systems, networking, player data or controllers. It takes under a second.
+
+- A harness is a module returning `function(context: any)`. It prints `PASS <label>` / `FAIL <label>` for each check and `@done` at the end; copy the `check` helper from `tests/Server/Boot.luau`.
+- ree does not run Scripts, so a harness starts the systems itself, as the Bootstraps do: `Lifecycle.new(require(...Registry))` then `:Start()`, and `:Destroy()` at the end.
+- A server run has empty in-memory DataStores every run, no players until the harness adds one (`Instance.new("Player")` parented to `Players`), and `FireClient` reaches no client. Test data flows through `DataService.PlayerLoaded` and `PlayerData.Get`, as `tests/Server/Boot.luau` does.
+- A client run has no server, so anything that waits for the server at load must be stood in for. `tests/Client/Boot.luau` replaces `Packets` with `context.StandIn` and creates the `ScribeTransport` and `conch_networking` remote folders; reuse that setup. When a package upgrade renames those remotes, update the stand-ins.
+- Known emulator gaps the runner allows, and nothing else: Scribe's `SUBSYSTEM_HOOK_ERROR` naming `HasRobloxSubscription` (ree's Player lacks it), and Conch UI's `executor:257` layout error. Add a gap to `isKnownGap` in `.lune/test.luau` only after confirming it is the emulator, not our code.
+- A `Start` that yields shows up here as a client or server that stalls: keep waits in `task.spawn`, as `AdminController` does.
+
+**Ad-hoc runs and profiling.** `lune run ree run --harness <file> --run-context server --seconds 30` (or `client`) runs one harness, ending early at `@done`, with the project mounted from `default.project.json` and prints a JSON report of every output line. Add `--profile all --profile-out build/profile/<name>` to profile it, then read `ree profile report build/profile/<name>` (work per frame priced as a Roblox client pays it, top functions, allocations). Compare two profiles with `ree profile diff <before> <after>`.
+
+**3D previews (ror).** Record a harness that builds what you want to see, then render it: `lune run ree record --harness <file> --out build/ree/<name> --seconds 0.2`, then `ror render build/ree/<name>/scene.rbxm --out build/ror/<name> --views iso` (also `front`, `top`, `turntable:8`). `ror render` also takes `.rbxm`/`.rbxl` files directly, `ror inspect` describes a render as text, and `ror cost` reports draw calls and triangles. `ror render --studio` exports from an open Studio session; it has not been verified in this repo.
+
+**UI previews (rur-native).** `rur-native render --module <file.luau> --dir build/rur/<name>` renders a module that returns a ScreenGui or other UI instance; `--model <file.rbxm>` renders a saved UI tree. Read `render.png`, and `scene.json` for every element's laid-out rectangle and text. Use it to check UI built in code (Conch, Iris panels) or exported from Studio; it does not see StarterGui in the place file.

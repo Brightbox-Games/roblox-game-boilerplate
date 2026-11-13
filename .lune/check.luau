@@ -9,7 +9,7 @@ if not fs.isFile("globalTypes.d.luau") or not fs.isDir("Packages") then
 	process.exit(1)
 end
 
-run("stylua", { "src", ".lune" })
+run("stylua", { "src", ".lune", "tests" })
 run("rojo", { "sourcemap", "default.project.json", "--output", "sourcemap.json" })
 run("luau-lsp", {
 	"analyze",
@@ -17,6 +17,7 @@ run("luau-lsp", {
 	"--definitions=globalTypes.d.luau",
 	"--sourcemap=sourcemap.json",
 	"./src",
+	"./tests",
 })
 if not fs.isDir("build") then
 	fs.writeDir("build")
