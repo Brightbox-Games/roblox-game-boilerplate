@@ -5,24 +5,28 @@
     "ReplicatedStorage": {
       "Base": {
         "$path": {
-          "optional": "src/common/Base/Shared"
+          "optional": "src/common/Base"
         }
       },
       "Core": {
         "$className": "Folder",
         "Access": {
           "$path": {
-            "optional": "src/common/Core/Access/Shared"
+            "optional": "src/common/Core/Access"
           }
         },
         "Data": {
-          "$path": {
-            "optional": "src/common/Core/Data/Shared"
-          }
+          "$className": "Folder",
+          "PlayerData": {
+            "$path": {
+              "optional": "src/common/Core/Data/PlayerData@Shared"
+            }
+          },
+          "$ignoreUnknownInstances": false
         },
-        "Net": {
+        "Packets": {
           "$path": {
-            "optional": "src/common/Core/Net/Shared"
+            "optional": "src/common/Core/Packets@Shared.luau"
           }
         },
         "$ignoreUnknownInstances": false
@@ -30,9 +34,13 @@
       "Features": {
         "$className": "Folder",
         "Game": {
-          "$path": {
-            "optional": "src/common/Features/Game/Shared"
-          }
+          "$className": "Folder",
+          "GameConfig": {
+            "$path": {
+              "optional": "src/common/Features/Game/GameConfig@Shared.luau"
+            }
+          },
+          "$ignoreUnknownInstances": false
         },
         "$ignoreUnknownInstances": false
       },
@@ -40,81 +48,149 @@
         "$path": "Packages"
       },
       "Platform": {
-        "$path": {
-          "optional": "src/common/Platform/Shared"
-        }
+        "$className": "Folder",
+        "Packet": {
+          "$path": {
+            "optional": "src/common/Platform/Packet@Shared"
+          }
+        },
+        "$ignoreUnknownInstances": false
       },
       "$ignoreUnknownInstances": true
     },
     "ServerScriptService": {
       "App": {
-        "$path": {
-          "optional": "src/common/App/Server"
-        }
+        "$className": "Folder",
+        "Bootstrap": {
+          "$path": {
+            "optional": "src/common/App/Bootstrap.server.luau"
+          }
+        },
+        "ComponentService": {
+          "$path": {
+            "optional": "src/common/App/ComponentService@Server.luau"
+          }
+        },
+        "Registry": {
+          "$path": {
+            "optional": "src/common/App/Registry@Server.luau"
+          }
+        },
+        "$ignoreUnknownInstances": false
       },
       "Core": {
         "$className": "Folder",
         "Data": {
-          "$path": {
-            "optional": "src/common/Core/Data/Server"
-          }
+          "$className": "Folder",
+          "DataService": {
+            "$path": {
+              "optional": "src/common/Core/Data/DataService@Server.luau"
+            }
+          },
+          "$ignoreUnknownInstances": false
         },
         "$ignoreUnknownInstances": false
       },
       "Features": {
         "$className": "Folder",
         "Admin": {
-          "$path": {
-            "optional": "src/common/Features/Admin/Server"
-          }
+          "$className": "Folder",
+          "AdminService": {
+            "$path": {
+              "optional": "src/common/Features/Admin/AdminService@Server.luau"
+            }
+          },
+          "$ignoreUnknownInstances": false
         },
         "Game": {
-          "$path": {
-            "optional": "src/common/Features/Game/Server"
-          }
+          "$className": "Folder",
+          "GameService": {
+            "$path": {
+              "optional": "src/common/Features/Game/GameService@Server.luau"
+            }
+          },
+          "$ignoreUnknownInstances": false
         },
         "$ignoreUnknownInstances": false
       },
       "Platform": {
-        "$path": {
-          "optional": "src/common/Platform/Server"
-        }
+        "$className": "Folder",
+        "EditorOnly": {
+          "$path": {
+            "optional": "src/common/Platform/EditorOnly@Server.luau"
+          }
+        },
+        "$ignoreUnknownInstances": false
       },
       "$ignoreUnknownInstances": true
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "App": {
-          "$path": {
-            "optional": "src/common/App/Client"
-          }
+          "$className": "Folder",
+          "Bootstrap": {
+            "$path": {
+              "optional": "src/common/App/Bootstrap.client.luau"
+            }
+          },
+          "ComponentController": {
+            "$path": {
+              "optional": "src/common/App/ComponentController@Client.luau"
+            }
+          },
+          "Registry": {
+            "$path": {
+              "optional": "src/common/App/Registry@Client.luau"
+            }
+          },
+          "$ignoreUnknownInstances": false
         },
         "Features": {
           "$className": "Folder",
           "Admin": {
-            "$path": {
-              "optional": "src/common/Features/Admin/Client"
-            }
+            "$className": "Folder",
+            "AdminController": {
+              "$path": {
+                "optional": "src/common/Features/Admin/AdminController@Client.luau"
+              }
+            },
+            "$ignoreUnknownInstances": false
           },
           "Components": {
-            "$path": {
-              "optional": "src/common/Features/Components/Client"
-            }
+            "$className": "Folder",
+            "Spinner": {
+              "$path": {
+                "optional": "src/common/Features/Components/Spinner@Client.luau"
+              }
+            },
+            "$ignoreUnknownInstances": false
           },
           "Debug": {
-            "$path": {
-              "optional": "src/common/Features/Debug/Client"
-            }
+            "$className": "Folder",
+            "DebugController": {
+              "$path": {
+                "optional": "src/common/Features/Debug/DebugController@Client.luau"
+              }
+            },
+            "$ignoreUnknownInstances": false
           },
           "Game": {
-            "$path": {
-              "optional": "src/common/Features/Game/Client"
-            }
+            "$className": "Folder",
+            "AppController": {
+              "$path": {
+                "optional": "src/common/Features/Game/AppController@Client.luau"
+              }
+            },
+            "$ignoreUnknownInstances": false
           },
           "UI": {
-            "$path": {
-              "optional": "src/common/Features/UI/Client"
-            }
+            "$className": "Folder",
+            "UIController": {
+              "$path": {
+                "optional": "src/common/Features/UI/UIController@Client"
+              }
+            },
+            "$ignoreUnknownInstances": false
           },
           "$ignoreUnknownInstances": false
         },

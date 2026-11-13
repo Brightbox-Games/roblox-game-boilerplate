@@ -2,7 +2,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameConfig = require(ReplicatedStorage.Features.Game.GameConfig)
-local Packets = require(ReplicatedStorage.Core.Net.Packets)
+local Packets = require(ReplicatedStorage.Core.Packets)
 
 local GameService = { Name = "GameService" }
 

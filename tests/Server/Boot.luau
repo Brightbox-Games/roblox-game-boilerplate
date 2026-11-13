@@ -20,7 +20,7 @@ return function(_context: any)
 	require(ServerScriptService.Platform.EditorOnly).Strip()
 	local Lifecycle = require(ReplicatedStorage.Base.Lifecycle)
 	local PlayerData = require(ReplicatedStorage.Core.Data.PlayerData)
-	local Packets = require(ReplicatedStorage.Core.Net.Packets)
+	local Packets = require(ReplicatedStorage.Core.Packets)
 	local services = require(ServerScriptService.App.Registry)
 	local runtime = Lifecycle.new(services)
 

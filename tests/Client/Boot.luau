@@ -34,7 +34,7 @@ local function remotes(name: string, remoteNames: { string })
 end
 
 return function(context: any)
-	context.StandIn(ReplicatedStorage.Core.Net.Packets, packetsStandIn)
+	context.StandIn(ReplicatedStorage.Core.Packets, packetsStandIn)
 	remotes("ScribeTransport", { "Down", "Up" })
 	remotes("conch_networking", {
 		"invoke_server_command",

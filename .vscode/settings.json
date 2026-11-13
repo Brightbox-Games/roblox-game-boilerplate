@@ -5,7 +5,7 @@
     "Packages/**",
     "DevPackages/**",
     "build/**",
-    "src/**/Platform/Shared/Packet/**"
+    "src/**/Platform/Packet@Shared/**"
   ],
   "luau-lsp.fflags.enableNewSolver": true,
   "[luau]": {
