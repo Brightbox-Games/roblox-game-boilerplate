@@ -31,8 +31,7 @@ export type Packet<A... = (), B... = ()> = {
 
 type PendingResponse = { Packet: any, Yielded: thread, Timeout: thread }
 
-local Settings =
-	{ UseBuffers = true, DebugOutgoing = false, DebugOutgoingInterval = 5, DebugOutgoingTop = 10 }
+local Settings = { DebugOutgoing = false, DebugOutgoingInterval = 5, DebugOutgoingTop = 10 }
 local ParametersToFunctions, TableToFunctions, ReadParameters, WriteParameters, Timeout, TryActivateChannel
 local RunService = game:GetService("RunService")
 local PlayersService = game:GetService("Players")
@@ -153,81 +152,45 @@ function Packet:RateLimit(count, window)
 end
 
 function Packet:Fire(...)
-	if Settings.UseBuffers then
-		if self.ResponseReads then
-			if RunService:IsServer() then
-				error("You must use FireClient(player)", 2)
-			end
-			local responseThread
-			for i = 1, 128 do
-				responseThread = threads[threads.Index]
-				if responseThread then
-					threads.Index = (threads.Index + 1) % 128
-				else
-					break
-				end
-			end
-			if responseThread then
-				error("Cannot have more than 128 yielded threads", 2)
-			end
-			Import(cursor)
-			WriteU8(self.Id)
-			WriteU8(threads.Index)
-			WriteParameters(self.Writes, { ... })
-			cursor = Export()
-			threads[threads.Index] = {
-				Packet = self,
-				Yielded = coroutine.running(),
-				Timeout = Task:Delay(
-					self.ResponseTimeout,
-					Timeout,
-					threads,
-					threads.Index,
-					self.ResponseTimeoutValue
-				),
-			}
-			threads.Index = (threads.Index + 1) % 128
-			return coroutine.yield()
-		else
-			Import(cursor)
-			WriteU8(self.Id)
-			WriteParameters(self.Writes, { ... })
-			cursor = Export()
+	if self.ResponseReads then
+		if RunService:IsServer() then
+			error("You must use FireClient(player)", 2)
 		end
+		local responseThread
+		for i = 1, 128 do
+			responseThread = threads[threads.Index]
+			if responseThread then
+				threads.Index = (threads.Index + 1) % 128
+			else
+				break
+			end
+		end
+		if responseThread then
+			error("Cannot have more than 128 yielded threads", 2)
+		end
+		Import(cursor)
+		WriteU8(self.Id)
+		WriteU8(threads.Index)
+		WriteParameters(self.Writes, { ... })
+		cursor = Export()
+		threads[threads.Index] = {
+			Packet = self,
+			Yielded = coroutine.running(),
+			Timeout = Task:Delay(
+				self.ResponseTimeout,
+				Timeout,
+				threads,
+				threads.Index,
+				self.ResponseTimeoutValue
+			),
+		}
+		threads.Index = (threads.Index + 1) % 128
+		return coroutine.yield()
 	else
-		if self.ResponseReads then
-			if RunService:IsServer() then
-				error("You must use FireClient(player)", 2)
-			end
-			local responseThread
-			for i = 1, 128 do
-				responseThread = threads[threads.Index]
-				if responseThread then
-					threads.Index = (threads.Index + 1) % 128
-				else
-					break
-				end
-			end
-			if responseThread then
-				error("Cannot have more than 128 yielded threads", 2)
-			end
-			remoteEvent:FireServer(self.Id, threads.Index, ...)
-			threads[threads.Index] = {
-				Packet = self,
-				Yielded = coroutine.running(),
-				Timeout = Task:Delay(
-					self.ResponseTimeout,
-					Timeout,
-					threads,
-					threads.Index,
-					self.ResponseTimeoutValue
-				),
-			}
-			threads.Index = (threads.Index + 1) % 128
-			return coroutine.yield()
-		else
-			remoteEvent:FireServer(self.Id, ...)
-		end
+		Import(cursor)
+		WriteU8(self.Id)
+		WriteParameters(self.Writes, { ... })
+		cursor = Export()
 	end
 end
 
@@ -235,103 +198,61 @@ function Packet:FireClient(player, ...)
 	if player.Parent == nil then
 		return
 	end
-	if Settings.UseBuffers then
-		if self.ResponseReads then
-			debugOutgoingIncrement(self.Name)
-			local threads = playerThreads[player]
-			if threads == nil then
-				threads = { Index = 0 }
-				playerThreads[player] = threads
-			end
-			local responseThread
-			for i = 1, 128 do
-				responseThread = threads[threads.Index]
-				if responseThread then
-					threads.Index = (threads.Index + 1) % 128
-				else
-					break
-				end
-			end
-			if responseThread then
-				error("Cannot have more than 128 yielded threads", 2)
-				return
-			end
-			Import(playerCursors[player] or {
-				Buffer = buffer.create(128),
-				BufferLength = 128,
-				BufferOffset = 0,
-				Instances = {},
-				InstancesOffset = 0,
-			})
-			WriteU8(self.Id)
-			WriteU8(threads.Index)
-			WriteParameters(self.Writes, { ... })
-			playerCursors[player] = Export()
-			threads[threads.Index] = {
-				Packet = self,
-				Yielded = coroutine.running(),
-				Timeout = Task:Delay(
-					self.ResponseTimeout,
-					Timeout,
-					threads,
-					threads.Index,
-					self.ResponseTimeoutValue
-				),
-			}
-			threads.Index = (threads.Index + 1) % 128
-			return coroutine.yield()
-		else
-			debugOutgoingIncrement(self.Name)
-			Import(playerCursors[player] or {
-				Buffer = buffer.create(128),
-				BufferLength = 128,
-				BufferOffset = 0,
-				Instances = {},
-				InstancesOffset = 0,
-			})
-			WriteU8(self.Id)
-			WriteParameters(self.Writes, { ... })
-			playerCursors[player] = Export()
+	debugOutgoingIncrement(self.Name)
+	if self.ResponseReads then
+		local threads = playerThreads[player]
+		if threads == nil then
+			threads = { Index = 0 }
+			playerThreads[player] = threads
 		end
+		local responseThread
+		for i = 1, 128 do
+			responseThread = threads[threads.Index]
+			if responseThread then
+				threads.Index = (threads.Index + 1) % 128
+			else
+				break
+			end
+		end
+		if responseThread then
+			error("Cannot have more than 128 yielded threads", 2)
+			return
+		end
+		Import(playerCursors[player] or {
+			Buffer = buffer.create(128),
+			BufferLength = 128,
+			BufferOffset = 0,
+			Instances = {},
+			InstancesOffset = 0,
+		})
+		WriteU8(self.Id)
+		WriteU8(threads.Index)
+		WriteParameters(self.Writes, { ... })
+		playerCursors[player] = Export()
+		threads[threads.Index] = {
+			Packet = self,
+			Yielded = coroutine.running(),
+			Timeout = Task:Delay(
+				self.ResponseTimeout,
+				Timeout,
+				threads,
+				threads.Index,
+				self.ResponseTimeoutValue
+			),
+		}
+		threads.Index = (threads.Index + 1) % 128
+		return coroutine.yield()
 	else
-		if self.ResponseReads then
-			debugOutgoingIncrement(self.Name)
-			local threads = playerThreads[player]
-			if threads == nil then
-				threads = { Index = 0 }
-				playerThreads[player] = threads
-			end
-			local responseThread
-			for i = 1, 128 do
-				responseThread = threads[threads.Index]
-				if responseThread then
-					threads.Index = (threads.Index + 1) % 128
-				else
-					break
-				end
-			end
-			if responseThread then
-				error("Cannot have more than 128 yielded threads", 2)
-				return
-			end
-			remoteEvent:FireClient(player, self.Id, threads.Index, ...)
-			threads[threads.Index] = {
-				Packet = self,
-				Yielded = coroutine.running(),
-				Timeout = Task:Delay(
-					self.ResponseTimeout,
-					Timeout,
-					threads,
-					threads.Index,
-					self.ResponseTimeoutValue
-				),
-			}
-			threads.Index = (threads.Index + 1) % 128
-			return coroutine.yield()
-		else
-			debugOutgoingIncrement(self.Name)
-			remoteEvent:FireClient(player, self.Id, ...)
-		end
+		Import(playerCursors[player] or {
+			Buffer = buffer.create(128),
+			BufferLength = 128,
+			BufferOffset = 0,
+			Instances = {},
+			InstancesOffset = 0,
+		})
+		WriteU8(self.Id)
+		WriteParameters(self.Writes, { ... })
+		playerCursors[player] = Export()
 	end
 end
 
@@ -342,16 +263,11 @@ function Packet:FireAllClients(...)
 	if self.ResponseReads then
 		error("Cannot use FireAllClients with packets that expect a response", 2)
 	end
-	if Settings.UseBuffers then
-		debugOutgoingIncrement(self.Name)
-		Import(cursor)
-		WriteU8(self.Id)
-		WriteParameters(self.Writes, { ... })
-		cursor = Export()
-	else
-		debugOutgoingIncrement(self.Name)
-		remoteEvent:FireAllClients(self.Id, ...)
-	end
+	debugOutgoingIncrement(self.Name)
+	Import(cursor)
+	WriteU8(self.Id)
+	WriteParameters(self.Writes, { ... })
+	cursor = Export()
 end
 
 function Packet:Serialize(...)
@@ -466,10 +382,23 @@ function WriteParameters(writes: { (any) -> () }, values: { any })
 	end
 end
 
+local function Resume(thread: thread, ...: any)
+	if coroutine.status(thread) == "suspended" then
+		task.defer(thread, ...)
+	end
+end
+
+local function Send(fire: (...any) -> ...any, ...: any)
+	local success, errorMessage = pcall(fire, ...)
+	if not success then
+		warn("[Packet] Send failed:", errorMessage)
+	end
+end
+
 function Timeout(threads: { [number]: PendingResponse, Index: number }, threadIndex: number, value: any)
 	local responseThreads = threads[threadIndex]
 	threads[threadIndex] = nil
-	task.defer(responseThreads.Yielded, value)
+	Resume(responseThreads.Yielded, value)
 end
 
 if RunService:IsServer() then
@@ -486,21 +415,21 @@ if RunService:IsServer() then
 				local truncatedBuffer = buffer.create(cursor.BufferOffset)
 				buffer.copy(truncatedBuffer, 0, cursor.Buffer, 0, cursor.BufferOffset)
 				if cursor.InstancesOffset == 0 then
-					remoteEvent:FireAllClients(truncatedBuffer)
+					Send(remoteEvent.FireAllClients, remoteEvent, truncatedBuffer)
 				else
-					remoteEvent:FireAllClients(truncatedBuffer, cursor.Instances)
-					cursor.InstancesOffset = 0
-					table.clear(cursor.Instances)
+					Send(remoteEvent.FireAllClients, remoteEvent, truncatedBuffer, cursor.Instances)
 				end
 				cursor.BufferOffset = 0
+				cursor.InstancesOffset = 0
+				table.clear(cursor.Instances)
 			end
-			for player, cursor in playerCursors do
-				local truncatedBuffer = buffer.create(cursor.BufferOffset)
-				buffer.copy(truncatedBuffer, 0, cursor.Buffer, 0, cursor.BufferOffset)
-				if cursor.InstancesOffset == 0 then
-					remoteEvent:FireClient(player, truncatedBuffer)
+			for player, playerCursor in playerCursors do
+				local truncatedBuffer = buffer.create(playerCursor.BufferOffset)
+				buffer.copy(truncatedBuffer, 0, playerCursor.Buffer, 0, playerCursor.BufferOffset)
+				if playerCursor.InstancesOffset == 0 then
+					Send(remoteEvent.FireClient, remoteEvent, player, truncatedBuffer)
 				else
-					remoteEvent:FireClient(player, truncatedBuffer, cursor.Instances)
+					Send(remoteEvent.FireClient, remoteEvent, player, truncatedBuffer, playerCursor.Instances)
 				end
 			end
 			table.clear(playerCursors)
@@ -584,7 +513,7 @@ if RunService:IsServer() then
 					local pending = playerThreads[player]
 					local responseThreads = if pending then pending[threadIndex] else nil
 					if pending and responseThreads and responseThreads.Packet == packet then
-						task.defer(responseThreads.Yielded, ReadParameters(packet.ResponseReads))
+						Resume(responseThreads.Yielded, ReadParameters(packet.ResponseReads))
 						task.cancel(responseThreads.Timeout)
 						pending[threadIndex] = nil
 					elseif RunService:IsStudio() then
@@ -606,51 +535,15 @@ if RunService:IsServer() then
 		end
 	end
 
-	local respondUnbuffered = function(packet: Packet, player: Player, threadIndex: number, ...)
-		if not allowed(packet, player) then
-			return
-		end
-		if packet.OnServerInvoke == nil then
-			if RunService:IsStudio() then
-				warn("OnServerInvoke not found for packet:", packet.Name, "discarding event:", ...)
-			end
-			return
-		end
-		local values = { packet.OnServerInvoke(player, ...) }
-		if player.Parent == nil then
-			return
-		end
-		remoteEvent:FireClient(player, packet.Id, threadIndex + 128, table.unpack(values))
-	end
-
-	local onServerEventUnbuffered = function(player: Player, packetId: number, ...)
-		local packet = packets[packetId]
-		if not packet then
-			return
-		end
-		if packet.ResponseReads then
-			local args = { ... }
-			local threadIndex = table.remove(args, 1)
-			Task:Defer(respondUnbuffered, packet, player, threadIndex, table.unpack(args))
-		elseif allowed(packet, player) then
-			packet.OnServerEvent:FireDeferred(player, ...)
-		end
-	end
-
-	local onRemoteEvent = function(player: Player, arg1, ...)
-		if Settings.UseBuffers and typeof(arg1) ~= "buffer" then
+	local onRemoteEvent = function(player: Player, receivedBuffer: any, ...)
+		if typeof(receivedBuffer) ~= "buffer" then
 			if RunService:IsStudio() then
 				warn(player.Name, "sent an unbuffered packet; discarding it")
 			end
 			return
 		end
-		local _success, errorMessage: string?
-		if typeof(arg1) == "buffer" then
-			_success, errorMessage = pcall(onServerEvent, player, arg1, ...)
-			arrayBudget = math.huge
-		else
-			_success, errorMessage = pcall(onServerEventUnbuffered, player, arg1, ...)
-		end
+		local _success, errorMessage: string? = pcall(onServerEvent, player, receivedBuffer, ...)
+		arrayBudget = math.huge
 		if errorMessage and RunService:IsStudio() then
 			warn(player.Name, errorMessage)
 		end
@@ -683,11 +576,9 @@ if RunService:IsServer() then
 		end
 	end)
 
-	if Settings.UseBuffers then
-		RunService.Heartbeat:Connect(function(deltaTime)
-			task.defer(thread)
-		end)
-	end
+	RunService.Heartbeat:Connect(function(deltaTime)
+		task.defer(thread)
+	end)
 else
 	threads = { Index = 0 }
 	local startTime = workspace:GetAttribute("StartTime")
@@ -712,13 +603,13 @@ else
 				local truncatedBuffer = buffer.create(cursor.BufferOffset)
 				buffer.copy(truncatedBuffer, 0, cursor.Buffer, 0, cursor.BufferOffset)
 				if cursor.InstancesOffset == 0 then
-					remoteEvent:FireServer(truncatedBuffer)
+					Send(remoteEvent.FireServer, remoteEvent, truncatedBuffer)
 				else
-					remoteEvent:FireServer(truncatedBuffer, cursor.Instances)
-					cursor.InstancesOffset = 0
-					table.clear(cursor.Instances)
+					Send(remoteEvent.FireServer, remoteEvent, truncatedBuffer, cursor.Instances)
 				end
 				cursor.BufferOffset = 0
+				cursor.InstancesOffset = 0
+				table.clear(cursor.Instances)
 			end
 		end
 	end)
@@ -736,84 +627,43 @@ else
 		cursor = Export()
 	end
 
-	local respondUnbuffered = function(packet: Packet, threadIndex: number, ...)
-		if packet.OnClientInvoke == nil then
-			warn("OnClientInvoke not found for packet:", packet.Name, "discarding event:", ...)
-			return
-		end
-		local values = { packet.OnClientInvoke(...) }
-		remoteEvent:FireServer(packet.Id, threadIndex + 128, table.unpack(values))
-	end
-
-	local onClientEventUnbuffered = function(packetId: number, ...)
-		local packet = packets[packetId]
-		if not packet then
-			return
-		end
-		if packet.ResponseReads then
-			local args = { ... }
-			local threadIndex = table.remove(args, 1) :: number
-			if threadIndex < 128 then
-				Task:Defer(respondUnbuffered, packet, threadIndex, table.unpack(args))
-			else
-				threadIndex -= 128
-				local responseThreads = threads[threadIndex]
-				if responseThreads and responseThreads.Packet == packet then
-					task.cancel(responseThreads.Timeout)
-					task.defer(responseThreads.Yielded, table.unpack(args))
-					threads[threadIndex] = nil
-				else
-					warn(
-						"Response thread not found for packet:",
-						packet.Name,
-						"discarding response:",
-						table.unpack(args)
-					)
-				end
-			end
-		else
-			packet.OnClientEvent:FireDeferred(...)
-		end
-	end
-
 	remoteEvent.OnClientEvent:Connect(function(arg1, ...)
-		if typeof(arg1) == "buffer" then
-			local instances = select(1, ...)
-			Import({
-				Buffer = arg1,
-				BufferLength = buffer.len(arg1),
-				BufferOffset = 0,
-				Instances = instances or {},
-				InstancesOffset = 0,
-			})
-			while Ended() == false do
-				local packet = packets[ReadU8()]
-				if packet.ResponseReads then
-					local threadIndex = ReadU8()
-					if threadIndex < 128 then
-						Task:Defer(respond, packet, threadIndex, ReadParameters(packet.Reads))
-					else
-						threadIndex -= 128
-						local responseThreads = threads[threadIndex]
-						if responseThreads and responseThreads.Packet == packet then
-							task.defer(responseThreads.Yielded, ReadParameters(packet.ResponseReads))
-							task.cancel(responseThreads.Timeout)
-							threads[threadIndex] = nil
-						else
-							warn(
-								"Response thread not found for packet:",
-								packet.Name,
-								"discarding response:",
-								ReadParameters(packet.ResponseReads)
-							)
-						end
-					end
+		if typeof(arg1) ~= "buffer" then
+			return
+		end
+		local instances = select(1, ...)
+		Import({
+			Buffer = arg1,
+			BufferLength = buffer.len(arg1),
+			BufferOffset = 0,
+			Instances = instances or {},
+			InstancesOffset = 0,
+		})
+		while Ended() == false do
+			local packet = packets[ReadU8()]
+			if packet.ResponseReads then
+				local threadIndex = ReadU8()
+				if threadIndex < 128 then
+					Task:Defer(respond, packet, threadIndex, ReadParameters(packet.Reads))
 				else
-					packet.OnClientEvent:FireDeferred(ReadParameters(packet.Reads))
+					threadIndex -= 128
+					local responseThreads = threads[threadIndex]
+					if responseThreads and responseThreads.Packet == packet then
+						Resume(responseThreads.Yielded, ReadParameters(packet.ResponseReads))
+						task.cancel(responseThreads.Timeout)
+						threads[threadIndex] = nil
+					else
+						warn(
+							"Response thread not found for packet:",
+							packet.Name,
+							"discarding response:",
+							ReadParameters(packet.ResponseReads)
+						)
+					end
 				end
+			else
+				packet.OnClientEvent:FireDeferred(ReadParameters(packet.Reads))
 			end
-		else
-			onClientEventUnbuffered(arg1, ...)
 		end
 	end)
 
@@ -830,15 +680,13 @@ else
 		end
 	end)
 
-	if Settings.UseBuffers then
-		RunService.Heartbeat:Connect(function(deltaTime)
-			totalTime += deltaTime
-			if totalTime > 0.016666666666666666 then
-				totalTime %= 0.016666666666666666
-				task.defer(thread)
-			end
-		end)
-	end
+	RunService.Heartbeat:Connect(function(deltaTime)
+		totalTime += deltaTime
+		if totalTime > 0.016666666666666666 then
+			totalTime %= 0.016666666666666666
+			task.defer(thread)
+		end
+	end)
 end
 
 return setmetatable(Types.Types, {
