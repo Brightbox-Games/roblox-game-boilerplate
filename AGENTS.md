@@ -227,6 +227,9 @@ function Hud.new(_context: Types.Context, gui: ScreenGui): Types.Screen
 			label.Text = string.format("%d", cash)
 		end
 	end)
+	trove:Add(function()
+		stopCash()
+	end)
 
 	return {
 		Modal = false,
@@ -238,7 +241,6 @@ function Hud.new(_context: Types.Context, gui: ScreenGui): Types.Screen
 			gui.Enabled = false
 		end,
 		Destroy = function(_self: Types.Screen)
-			stopCash()
 			trove:Destroy()
 		end,
 	}
@@ -301,7 +303,7 @@ The matching packet in `Packets.luau` would be `GetCash = Packet("GetCash"):Resp
 
 - Access other systems through the registry captured in `Init` (`services.UIController:Open("Shop")`), not by requiring their modules directly. `PlayerData` is not a system: require it directly so its data stays typed. Direct requires break when the registry order changes and hide dependencies.
 - Dependencies must point one way. If two systems need each other, give one a `Signal` (`ReplicatedStorage.Packages.Signal`) that the other connects to in `Start`, as `DataService.PlayerLoaded` does.
-- Clean up with Trove (`ReplicatedStorage.Packages.Trove`), as `AppController` does, or with plain connection lists.
+- Clean up with Trove (`ReplicatedStorage.Packages.Trove`), not hand-kept connection lists. A system keeps a module-level `local trove = Trove.new()`, uses `trove:Connect(signal, handler)` in `Start`, and calls `trove:Clean()` in `Destroy`; see `DataService` and `DebugController`. Wrap stop functions from packages (Scribe's `Observe`, `Iris:Connect`) in a closure, `trove:Add(function() stop() end)`: the new solver rejects a typed function value passed directly.
 
 ### Components
 
@@ -370,7 +372,7 @@ Player data is saved, typed and replicated by [Scribe](https://ericplane.github.
 
 - **Template:** `Template` in `PlayerData/init.luau` declares every field. Use declarators for rules: `Cash = Scribe.Int(0, { Min = 0 })`. Out-of-range writes are clamped, so check balances before spending: `Increment(-price)` on too little cash clamps to 0 instead of failing. Wrap fields that must not reach the client in `Scribe.ServerOnly(...)`, fields every client should see in `Scribe.Shared(...)`, and runtime-only state in `Scribe.Session(...)`.
 - **Server reads and writes:** `PlayerData.Get(player)` returns the typed data, or `nil` while the player is loading or leaving. Check for nil in every handler and never keep the data across a yield. Read with `data.Cash.Get()` and write with `Set`, `Increment` and the other accessor methods; every write is validated, saved and sent to the owner. `PlayerData.Server.Get(player)` errors unless the player is loaded, so use it only inside `PlayerLoaded` handlers.
-- **Client reads:** `PlayerData.Client.Cash.Observe(callback)` calls `callback(value)` at once (with the template default until data arrives) and after every change, and returns a function that stops observing; call it in `Destroy`. Use `PlayerData.Client.WaitForData()` or `IsReady()` to gate one-off logic. The client mirror is read-only; changes go through Packet requests that a service validates.
+- **Client reads:** `PlayerData.Client.Cash.Observe(callback)` calls `callback(value)` at once (with the template default until data arrives) and after every change, and returns a function that stops observing; add it to a Trove (see Using other systems). Use `PlayerData.Client.WaitForData()` or `IsReady()` to gate one-off logic. The client mirror is read-only; changes go through Packet requests that a service validates.
 - **Per-player setup:** connect to `DataService.PlayerLoaded(player, data)` in `Start`, not `Players.PlayerAdded`. It fires after the player's data is ready and after every system has started, so every service that connects in `Start` sees every player.
 - **Per-player cleanup:** connect to `DataService.PlayerReleasing(player, data)`. It fires before the final save, on leave and on shutdown. Write final state into `data` there, without yielding. It may be skipped when another server takes over the session, so do not rely on it as the only place a value is written. Do not disconnect it in your own `Destroy`, or the shutdown save will miss you.
 - **Keep traffic small:** change the deepest field that changed, group related writes with `PlayerData.Server.Batch`, and never change player data every frame (per-frame values belong in Packet events or client-side state).

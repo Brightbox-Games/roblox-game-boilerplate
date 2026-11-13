@@ -4,6 +4,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlayerData = require(ReplicatedStorage.PlayerData)
 local Signal = require(ReplicatedStorage.Packages.Signal)
+local Trove = require(ReplicatedStorage.Packages.Trove)
 
 local DataService = {
 	Name = "DataService",
@@ -11,7 +12,7 @@ local DataService = {
 	PlayerReleasing = PlayerData.Leaving :: Signal.Signal<(Player, PlayerData.Data)>,
 }
 
-local connections: { RBXScriptConnection } = {}
+local trove = Trove.new()
 local stopped = false
 
 local function load(player: Player)
@@ -32,7 +33,7 @@ end
 function DataService.Init(_self: any, _services: { [string]: any }) end
 
 function DataService.Start(_self: any)
-	table.insert(connections, Players.PlayerAdded:Connect(load))
+	trove:Connect(Players.PlayerAdded, load)
 	for _, player in Players:GetPlayers() do
 		task.spawn(load, player)
 	end
@@ -40,10 +41,7 @@ end
 
 function DataService.Destroy(_self: any)
 	stopped = true
-	for _, connection in connections do
-		connection:Disconnect()
-	end
-	table.clear(connections)
+	trove:Clean()
 end
 
 return DataService

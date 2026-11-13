@@ -5,13 +5,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Iris = require(ReplicatedStorage.Packages.Iris)
+local Trove = require(ReplicatedStorage.Packages.Trove)
 local PlayerData = require(ReplicatedStorage.PlayerData)
 local isAdmin = require(ReplicatedStorage.Utils.IsAdmin)
 
 local DebugController = { Name = "DebugController" }
 
-local connections: { RBXScriptConnection } = {}
-local stopIris: (() -> ())? = nil
+local trove = Trove.new()
 local hasStarted = false
 
 function DebugController.Start(_self: any)
@@ -30,22 +30,16 @@ function DebugController.Start(_self: any)
 	local showDemo = Iris.State(false)
 	local frameTime = 0
 
-	table.insert(
-		connections,
-		RunService.RenderStepped:Connect(function(dt: number)
-			frameTime = dt
-		end)
-	)
-	table.insert(
-		connections,
-		UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
-			if input.KeyCode == Enum.KeyCode.F3 and not processed then
-				isOpen:set(not isOpen:get())
-			end
-		end)
-	)
+	trove:Connect(RunService.RenderStepped, function(dt: number)
+		frameTime = dt
+	end)
+	trove:Connect(UserInputService.InputBegan, function(input: InputObject, processed: boolean)
+		if input.KeyCode == Enum.KeyCode.F3 and not processed then
+			isOpen:set(not isOpen:get())
+		end
+	end)
 
-	stopIris = Iris:Connect(function()
+	local stopIris = Iris:Connect(function()
 		if isOpen:get() then
 			Iris.Window({ "Debug" }, { isOpened = isOpen })
 			Iris.Text({ `FPS: {if frameTime > 0 then math.round(1 / frameTime) else 0}` })
@@ -57,17 +51,13 @@ function DebugController.Start(_self: any)
 			Iris.ShowDemoWindow()
 		end
 	end)
+	trove:Add(function()
+		stopIris()
+	end)
 end
 
 function DebugController.Destroy(_self: any)
-	if stopIris then
-		stopIris()
-		stopIris = nil
-	end
-	for _, connection in connections do
-		connection:Disconnect()
-	end
-	table.clear(connections)
+	trove:Clean()
 	if hasStarted then
 		Iris.Shutdown()
 		hasStarted = false
