@@ -34,6 +34,12 @@ local function Allocate(bytes: number)
 	end
 end
 
+local function CheckLength(length: number, maximum: number)
+	if length > maximum then
+		error(`Packet: length {length} exceeds the maximum of {maximum}`, 0)
+	end
+end
+
 local function ReadS8(): number
 	local value = buffer.readi8(activeBuffer, bufferOffset)
 	bufferOffset += 1
@@ -145,7 +151,11 @@ local function WriteBuffer(value: buffer)
 end
 local function ReadInstance()
 	instancesOffset += 1
-	return instances[instancesOffset]
+	local value: any = instances[instancesOffset]
+	if value ~= nil and typeof(value) ~= "Instance" then
+		error("Packet: expected an Instance", 0)
+	end
+	return value
 end
 local function WriteInstance(value)
 	instancesOffset += 1
@@ -372,6 +382,7 @@ reads.String = function()
 end
 writes.String = function(value: string)
 	local length = #value
+	CheckLength(length, 255)
 	Allocate(1 + length)
 	WriteU8(length)
 	WriteString(value)
@@ -383,6 +394,7 @@ reads.StringLong = function()
 end
 writes.StringLong = function(value: string)
 	local length = #value
+	CheckLength(length, 65535)
 	Allocate(2 + length)
 	WriteU16(length)
 	WriteString(value)
@@ -394,6 +406,7 @@ reads.Buffer = function()
 end
 writes.Buffer = function(value: buffer)
 	local length = buffer.len(value)
+	CheckLength(length, 255)
 	Allocate(1 + length)
 	WriteU8(length)
 	WriteBuffer(value)
@@ -405,6 +418,7 @@ reads.BufferLong = function()
 end
 writes.BufferLong = function(value: buffer)
 	local length = buffer.len(value)
+	CheckLength(length, 65535)
 	Allocate(2 + length)
 	WriteU16(length)
 	WriteBuffer(value)
@@ -787,6 +801,7 @@ reads.Characters = function()
 end
 writes.Characters = function(value: string)
 	local length = #value
+	CheckLength(length, 255)
 	local bytes = math.ceil(length * characterBytes)
 	Allocate(1 + bytes)
 	WriteU8(length)
@@ -956,6 +971,7 @@ anyReads[11] = function()
 end
 anyWrites.string = function(value: string)
 	local length = #value
+	CheckLength(length, 255)
 	Allocate(2 + length)
 	WriteU8(11)
 	WriteU8(length)
@@ -967,6 +983,7 @@ anyReads[12] = function()
 end
 anyWrites.buffer = function(value: buffer)
 	local length = buffer.len(value)
+	CheckLength(length, 255)
 	Allocate(2 + length)
 	WriteU8(12)
 	WriteU8(length)

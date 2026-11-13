@@ -34,7 +34,7 @@
 
 ## Setup and checks
 
-Tools are pinned in `rokit.toml`: Rojo, Wally, StyLua, wally-package-types, luau-lsp, Lune, Blink and Asphalt. The only prerequisite is [Rokit](https://github.com/rojo-rbx/rokit). Project scripts are Lune scripts in `.lune/`, run from the project root.
+Tools are pinned in `rokit.toml`: Rojo, Wally, StyLua, wally-package-types, luau-lsp, Lune and Asphalt. The only prerequisite is [Rokit](https://github.com/rojo-rbx/rokit). Project scripts are Lune scripts in `.lune/`, run from the project root.
 
 ```sh
 rokit install
@@ -349,6 +349,10 @@ Replica ([MadStudioRoblox/Replica](https://github.com/MadStudioRoblox/Replica)) 
 - `Packet(name, ...types)` declares an event; `:Response(...types)` makes it a request with a 10-second default timeout. Raise `ResponseTimeout` for anything that waits on a save.
 - Services bind `OnServerEvent`/`OnServerInvoke` in `Start` and clear them in `Destroy`. Validate the sender, every argument and range on the server.
 - Rate limit every packet the client can send by chaining `:RateLimit(count, window)`, allowing `count` calls per `window` seconds per player: `Buy = Packet("Buy", Packet.String):Response(Packet.Boolean8):RateLimit(5, 1)`. The server drops excess calls before they reach handlers (warning in Studio). A dropped request gets no reply, so the client's `Fire` returns `ResponseTimeoutValue` after `ResponseTimeout`; debounce buttons on the client so normal use never hits the limit.
+- A packet without `:RateLimit` cannot be sent by clients at all: the server drops it (warning in Studio). Leave server-to-client packets unlimited so clients cannot fire them.
+- `Packet.Instance` arguments from a client are either `nil` or a real Instance, nothing else, but the client chooses which one. Check that the player may act on it (owner, distance, ancestry) before using it.
+- Length limits are in bytes: `String`, `Buffer`, `Characters` and `Any` strings take at most 255, `StringLong` and `BufferLong` at most 65,535, and arrays at most 65,535 elements. Sending a longer value errors in the sender and nothing is sent. Before sending player-supplied text (names, chat, textbox input), check its byte length on the server, or use `StringLong`.
+- `src/shared/Packet` is our fork of Suphi Kaner's Packet 1.7 with local security fixes: per-packet rate limits, rejecting unbuffered client messages, binding each awaited response to its packet, checking Instance arguments, and erroring on over-long values instead of corrupting the stream. Do not replace it with an upstream or Wally copy; port upstream fixes by hand.
 - For limits that are not per packet (per action, per target, shared across packets), use `Utils/RateLimit` directly: `local limiter = RateLimit.new(3, 10)`, then `limiter:Allow(player)`. Call `limiter:Remove(player)` when the player leaves.
 - Packet is for actions and Replica is for state. Clients send requests and receive events through Packet; the server's player data reaches clients through Replica (see Player data). Do not add packets that mirror data a replica already holds.
 - Prefer Packet over RemoteEvents and RemoteFunctions. Use attributes only for simple values that belong to an instance, such as a plot's owner or the Bootstraps' `Ready`.
