@@ -3,7 +3,7 @@
 ## Code style
 
 - Do not add comments to code. Luau directives such as `--!strict` are allowed.
-- Keep `--!strict` at the top of every Luau file. Run `./scripts/check.ps1` before handing off code changes.
+- Keep `--!strict` at the top of every Luau file. Run `lune run check` before handing off code changes.
 - Format with StyLua (tabs, 110 columns, double quotes). Never edit generated `Packages/`, `ServerPackages/`, `build/` or `sourcemap.json`, or vendored code in `vendor/`.
 
 ### Naming
@@ -33,18 +33,21 @@
 
 ## Setup and checks
 
-Tools are pinned in `aftman.toml`: Rojo, Wally, StyLua, wally-package-types and luau-lsp. The only prerequisite is [Aftman](https://github.com/LPGhatguy/aftman).
+Tools are pinned in `rokit.toml`: Rojo, Wally, StyLua, wally-package-types, luau-lsp, Lune, Blink and Asphalt. The only prerequisite is [Rokit](https://github.com/rojo-rbx/rokit). Project scripts are Lune scripts in `.lune/`, run from the project root.
 
-```powershell
-./scripts/install.ps1
+```sh
+rokit install
+lune run install
 rojo serve default.project.json --address 127.0.0.1
 ```
 
-- `scripts/install.ps1` installs the tools, downloads the Roblox type definitions (`globalTypes.d.luau`, Git-ignored) if missing, runs `wally install`, then `wally-package-types` so package types (such as `Signal.Signal<T...>`) are visible to strict code. Run it on a fresh clone and after changing `wally.toml`; never run bare `wally install`. On first run Aftman may ask the user to trust each tool.
+- `rokit install` installs the pinned tools. On first run it asks the user to trust each new tool author; that prompt needs a real terminal, so ask the user to run it rather than bypassing it.
+- `lune run install` downloads the Roblox type definitions (`globalTypes.d.luau`, Git-ignored) if missing, runs `wally install`, then `wally-package-types` so package types (such as `Signal.Signal<T...>`) are visible to strict code. Run it on a fresh clone and after changing `wally.toml`; never run bare `wally install`.
+- On Windows, `./scripts/install.ps1` and `./scripts/check.ps1` are thin wrappers: `install.ps1` runs `rokit install` then `lune run install`, and `check.ps1` runs `lune run check`. Keep logic in the Lune scripts, not the wrappers.
 - Connect the Rojo plugin in Studio to `localhost:34873`. Once the game has a place, add `"servePlaceIds": [<placeId>]` to `default.project.json`.
 - In Studio, enable **Game Settings > Security > Enable Studio Access to API Services** (the place must be published). Without it (or in an unpublished place), ProfileStore falls back to in-memory mock data: everything works, but data resets when Play stops, and `DataService` warns once. Live servers always have DataStore access.
 - In Play, output shows `[Game Boilerplate] Server services ready`, `Client controllers ready` and a Packet round trip. Both Bootstraps set a `Ready` attribute.
-- `./scripts/check.ps1` is the one command to run after every change. It formats `src` with StyLua, regenerates the sourcemap, runs luau-lsp type and lint analysis, and does a Rojo build. Fix every error it reports and rerun it until it passes.
+- `lune run check` is the one command to run after every change. It formats `src` and `.lune` with StyLua, regenerates the sourcemap, runs luau-lsp type and lint analysis, and does a Rojo build. Fix every error it reports and rerun it until it passes.
 - `rojo build` output is code-only, not a replacement for the authored place.
 
 ## Layout
@@ -323,7 +326,7 @@ end
 
 ### Packages
 
-Shared packages are in `ReplicatedStorage.Packages`; server-only ones in `ServerScriptService.ServerPackages`. Add new ones to `wally.toml` and run `scripts/install.ps1`. Commit `wally.toml` and `wally.lock`.
+Shared packages are in `ReplicatedStorage.Packages`; server-only ones in `ServerScriptService.ServerPackages`. Add new ones to `wally.toml` and run `lune run install`. Commit `wally.toml` and `wally.lock`.
 
 | Package | Use it for |
 | --- | --- |
@@ -338,7 +341,7 @@ Shared packages are in `ReplicatedStorage.Packages`; server-only ones in `Server
 
 Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor. Do not add packages that duplicate these, Packet or Replica (no Comm, Net, TypedRemote, ReplicaService, Janitor or Knit) without the user's agreement.
 
-Replica ([MadStudioRoblox/Replica](https://github.com/MadStudioRoblox/Replica)) is not on Wally, so it is vendored unmodified in `vendor/Replica` at commit `9cae236`, with its Apache-2.0 `LICENSE`. It requires itself from fixed paths, so `default.project.json` maps it to `ReplicatedStorage.ReplicaClient`, `ReplicatedStorage.ReplicaShared` and `ServerScriptService.ReplicaServer`; do not move it. `vendor/.luaurc` turns off type checking for it. To update, replace `src/`, `LICENSE` and `README.md` with a newer upstream commit, update the commit above, and run `./scripts/check.ps1` and a Play test. Do not use Wally forks of Replica without checking them.
+Replica ([MadStudioRoblox/Replica](https://github.com/MadStudioRoblox/Replica)) is not on Wally, so it is vendored unmodified in `vendor/Replica` at commit `9cae236`, with its Apache-2.0 `LICENSE`. It requires itself from fixed paths, so `default.project.json` maps it to `ReplicatedStorage.ReplicaClient`, `ReplicatedStorage.ReplicaShared` and `ServerScriptService.ReplicaServer`; do not move it. `vendor/.luaurc` turns off type checking for it. To update, replace `src/`, `LICENSE` and `README.md` with a newer upstream commit, update the commit above, and run `lune run check` and a Play test. Do not use Wally forks of Replica without checking them.
 
 ### Networking
 

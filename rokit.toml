@@ -1,0 +1,9 @@
+[tools]
+rojo = "rojo-rbx/rojo@7.7.1"
+wally = "UpliftGames/wally@0.3.2"
+stylua = "JohnnyMorganz/StyLua@2.6.0"
+wally-package-types = "JohnnyMorganz/wally-package-types@1.7.0"
+luau-lsp = "JohnnyMorganz/luau-lsp@1.70.1"
+lune = "lune-org/lune@0.11.1"
+blink = "1Axen/blink@0.18.9"
+asphalt = "jackTabsCode/asphalt@2.0.2"
