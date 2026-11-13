@@ -40,6 +40,12 @@ local function CheckLength(length: number, maximum: number)
 	end
 end
 
+local function CheckRemaining(bytes: number)
+	if bytes > buffer.len(activeBuffer) - bufferOffset then
+		error("Packet: buffer access out of bounds", 0)
+	end
+end
+
 local function ReadS8(): number
 	local value = buffer.readi8(activeBuffer, bufferOffset)
 	bufferOffset += 1
@@ -140,6 +146,7 @@ local function WriteString(value: string)
 	bufferOffset += #value
 end
 local function ReadBuffer(length: number)
+	CheckRemaining(length)
 	local value = buffer.create(length)
 	buffer.copy(value, 0, activeBuffer, bufferOffset, length)
 	bufferOffset += length
@@ -157,7 +164,10 @@ local function ReadInstance()
 	end
 	return value
 end
-local function WriteInstance(value)
+local function WriteInstance(value: any)
+	if value ~= nil and typeof(value) ~= "Instance" then
+		error("Packet: expected an Instance", 0)
+	end
 	instancesOffset += 1
 	instances[instancesOffset] = value
 end
@@ -187,7 +197,7 @@ end
 local function WriteF16(value: number)
 	local bitOffset = bufferOffset * 8
 	bufferOffset += 2
-	if value == 0 then
+	if value > -3.0517578125e-05 and value < 3.0517578125e-05 then
 		buffer.writebits(activeBuffer, bitOffset, 16, 0b0_00000_0000000000)
 	elseif value >= 65520 then
 		buffer.writebits(activeBuffer, bitOffset, 16, 0b0_11111_0000000000)
@@ -202,7 +212,12 @@ local function WriteF16(value: number)
 			value = -value
 		end
 		local mantissa, exponent = math.frexp(value)
-		buffer.writebits(activeBuffer, bitOffset + 0, 10, mantissa * 2048 - 1023.5)
+		mantissa = mantissa * 2048 - 1023.5
+		if mantissa >= 1024 then
+			mantissa = 0
+			exponent += 1
+		end
+		buffer.writebits(activeBuffer, bitOffset + 0, 10, mantissa)
 		buffer.writebits(activeBuffer, bitOffset + 10, 5, exponent + 14)
 		buffer.writebits(activeBuffer, bitOffset + 15, 1, sign)
 	end
@@ -233,7 +248,7 @@ end
 local function WriteF24(value: number)
 	local bitOffset = bufferOffset * 8
 	bufferOffset += 3
-	if value == 0 then
+	if value > -4.656612873077393e-10 and value < 4.656612873077393e-10 then
 		buffer.writebits(activeBuffer, bitOffset, 24, 0b0_000000_00000000000000000)
 	elseif value >= 4294959104 then
 		buffer.writebits(activeBuffer, bitOffset, 24, 0b0_111111_00000000000000000)
@@ -248,7 +263,12 @@ local function WriteF24(value: number)
 			value = -value
 		end
 		local mantissa, exponent = math.frexp(value)
-		buffer.writebits(activeBuffer, bitOffset + 0, 17, mantissa * 262144 - 131071.5)
+		mantissa = mantissa * 262144 - 131071.5
+		if mantissa >= 131072 then
+			mantissa = 0
+			exponent += 1
+		end
+		buffer.writebits(activeBuffer, bitOffset + 0, 17, mantissa)
 		buffer.writebits(activeBuffer, bitOffset + 17, 6, exponent + 30)
 		buffer.writebits(activeBuffer, bitOffset + 23, 1, sign)
 	end
@@ -561,6 +581,7 @@ end
 types.InstanceVector3F24Array = ("InstanceVector3F24Array" :: any) :: any
 reads.InstanceVector3F24Array = function()
 	local length = ReadU16()
+	CheckRemaining(length * 9)
 	local result = table.create(length)
 	for i = 1, length do
 		result[i] = { ReadInstance() :: any, Vector3.new(ReadF24(), ReadF24(), ReadF24()) }
@@ -818,9 +839,16 @@ local enums = require(script.Enums)
 for index, static in enums do
 	enumIndices[static] = index
 end
+local function ReadEnumItem(): EnumItem
+	local value = enums[ReadU8()]:FromValue(ReadU16())
+	if value == nil then
+		error("Packet: unknown EnumItem", 0)
+	end
+	return value
+end
 types.EnumItem = ("EnumItem" :: any) :: EnumItem
 reads.EnumItem = function()
-	return enums[ReadU8()]:FromValue(ReadU16())
+	return ReadEnumItem()
 end
 writes.EnumItem = function(value: EnumItem)
 	Allocate(3)
@@ -1177,7 +1205,7 @@ anyWrites.ColorSequence = function(value: ColorSequence)
 end
 
 anyReads[27] = function()
-	return enums[ReadU8()]:FromValue(ReadU16())
+	return ReadEnumItem()
 end
 anyWrites.EnumItem = function(value: EnumItem)
 	Allocate(4)

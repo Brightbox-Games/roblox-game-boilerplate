@@ -52,6 +52,7 @@ local debugOutgoingCounts: { [string]: number }? = nil
 local debugOutgoingLastDump = 0
 local packetRemotes: { RemoteEvent } = {}
 local channelChosen = false
+local arrayBudget = math.huge
 
 local honeypotCallback: ((player: Player) -> ())? = nil
 
@@ -111,6 +112,9 @@ local function Constructor<A..., B...>(_, name: string, ...: A...)
 	if RunService:IsServer() then
 		if channelChosen then
 			error("Packet: all packets must be defined during startup", 2)
+		end
+		if packetCounter > 255 then
+			error("Packet: cannot define more than 256 packets", 2)
 		end
 		packet.Id = packetCounter
 		packet.OnServerEvent = Signal.new() :: Signal.Signal<(Player, A...)>
@@ -396,6 +400,10 @@ function TableToFunctions(parameters: { any })
 		end
 		local Read = function()
 			local length = ReadU16()
+			arrayBudget -= length
+			if arrayBudget < 0 then
+				error("Packet: array is longer than its message", 0)
+			end
 			local values = table.create(length)
 			for index = 1, length do
 				values[index] = ReadFunction()
@@ -403,12 +411,13 @@ function TableToFunctions(parameters: { any })
 			return values
 		end
 		local Write = function(values: { any })
-			if #values > 65535 then
-				error(`Packet: array length {#values} exceeds the maximum of 65535`, 0)
+			local length = #values
+			if length > 65535 then
+				error(`Packet: array length {length} exceeds the maximum of 65535`, 0)
 			end
-			WriteU16(#values)
-			for index, value in values do
-				WriteFunction(value)
+			WriteU16(length)
+			for index = 1, length do
+				WriteFunction(values[index])
 			end
 		end
 		return Read, Write
@@ -448,7 +457,7 @@ function ReadParameters(reads: { () -> any })
 	for index, func in reads do
 		values[index] = func()
 	end
-	return table.unpack(values)
+	return table.unpack(values, 1, #reads)
 end
 
 function WriteParameters(writes: { (any) -> () }, values: { any })
@@ -459,8 +468,8 @@ end
 
 function Timeout(threads: { [number]: PendingResponse, Index: number }, threadIndex: number, value: any)
 	local responseThreads = threads[threadIndex]
-	task.defer(responseThreads.Yielded, value)
 	threads[threadIndex] = nil
+	task.defer(responseThreads.Yielded, value)
 end
 
 if RunService:IsServer() then
@@ -517,9 +526,6 @@ if RunService:IsServer() then
 	end
 
 	local respond = function(packet: Packet, player: Player, threadIndex: number, ...)
-		if not allowed(packet, player) then
-			return
-		end
 		if packet.OnServerInvoke == nil then
 			if RunService:IsStudio() then
 				warn("OnServerInvoke not found for packet:", packet.Name, "discarding event:", ...)
@@ -555,6 +561,7 @@ if RunService:IsServer() then
 			return
 		end
 		playerBytes[player] = bytes
+		arrayBudget = buffer.len(receivedBuffer) + (if instances then #instances else 0)
 		Import({
 			Buffer = receivedBuffer,
 			BufferLength = buffer.len(receivedBuffer),
@@ -567,14 +574,18 @@ if RunService:IsServer() then
 			if packet.ResponseReads then
 				local threadIndex = ReadU8()
 				if threadIndex < 128 then
-					Task:Defer(respond, packet, player, threadIndex, ReadParameters(packet.Reads))
+					if allowed(packet, player) then
+						Task:Defer(respond, packet, player, threadIndex, ReadParameters(packet.Reads))
+					else
+						ReadParameters(packet.Reads)
+					end
 				else
 					threadIndex -= 128
 					local pending = playerThreads[player]
 					local responseThreads = if pending then pending[threadIndex] else nil
 					if pending and responseThreads and responseThreads.Packet == packet then
-						task.cancel(responseThreads.Timeout)
 						task.defer(responseThreads.Yielded, ReadParameters(packet.ResponseReads))
+						task.cancel(responseThreads.Timeout)
 						pending[threadIndex] = nil
 					elseif RunService:IsStudio() then
 						warn(
@@ -636,6 +647,7 @@ if RunService:IsServer() then
 		local _success, errorMessage: string?
 		if typeof(arg1) == "buffer" then
 			_success, errorMessage = pcall(onServerEvent, player, arg1, ...)
+			arrayBudget = math.huge
 		else
 			_success, errorMessage = pcall(onServerEventUnbuffered, player, arg1, ...)
 		end
@@ -784,8 +796,8 @@ else
 						threadIndex -= 128
 						local responseThreads = threads[threadIndex]
 						if responseThreads and responseThreads.Packet == packet then
-							task.cancel(responseThreads.Timeout)
 							task.defer(responseThreads.Yielded, ReadParameters(packet.ResponseReads))
+							task.cancel(responseThreads.Timeout)
 							threads[threadIndex] = nil
 						else
 							warn(
