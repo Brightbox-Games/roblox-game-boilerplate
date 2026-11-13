@@ -71,7 +71,13 @@ function Checkouts.Env(): { [string]: string }
 	if rur then
 		env.ROR_RUR = rur
 	end
-	env.ROR_STUDIO_MCP = process.env.ROR_STUDIO_MCP or `127.0.0.1:{process.env.STUDIO_BRIDGE_PORT or "58790"}`
+	local bridgePort = process.env.STUDIO_BRIDGE_PORT or "58790"
+	env.ROR_STUDIO_MCP = process.env.ROR_STUDIO_MCP or `127.0.0.1:{bridgePort}`
+	env.RUR_STUDIO_MCP_PORT = process.env.RUR_STUDIO_MCP_PORT or bridgePort
+	-- rur's window capture is PrintWindow (Windows); the engine path (CaptureService) works anywhere
+	if process.os ~= "windows" then
+		env.RUR_STUDIO_CAPTURE = process.env.RUR_STUDIO_CAPTURE or "engine"
+	end
 	return env
 end
 
