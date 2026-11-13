@@ -9,10 +9,12 @@ local isAdmin = require(ReplicatedStorage.Utils.IsAdmin)
 local AdminController = { Name = "AdminController" }
 
 function AdminController.Start(_self: any)
-	Conch.initiate_default_lifecycle()
-	if isAdmin(Players.LocalPlayer) then
-		ConchUi.bind_to(Enum.KeyCode.F4)
-	end
+	task.spawn(function()
+		Conch.initiate_default_lifecycle()
+		if isAdmin(Players.LocalPlayer) then
+			ConchUi.bind_to(Enum.KeyCode.F4)
+		end
+	end)
 end
 
 return AdminController
