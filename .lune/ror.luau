@@ -32,4 +32,4 @@ if scriptInput and (args[1] == "render" or args[1] == "video" or args[1] == "cos
 	end
 end
 
-run("ror", args, Checkouts.Env())
+run(Checkouts.Binary("ror"), args, Checkouts.Env())

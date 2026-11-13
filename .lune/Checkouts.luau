@@ -40,6 +40,13 @@ function Checkouts.PinnedVersion(tool: string): string
 	return version
 end
 
+-- The tool built from its source checkout (target/release), or the Rokit-installed one.
+function Checkouts.Binary(tool: string, binary: string?): string
+	local path = Checkouts.Path(tool)
+	local candidate = if path then `{path}/target/release/{binary or tool}` else nil
+	return if candidate and fs.isFile(candidate) then candidate else binary or tool
+end
+
 function Checkouts.Program(name: string): string
 	local candidate = `{rustupBin}/{name}`
 	return if fs.isFile(candidate) then candidate else name

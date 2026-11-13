@@ -1,0 +1,194 @@
+diff --git a/crates/ror/src/main.rs b/crates/ror/src/main.rs
+index d145d6f..02890fb 100644
+--- a/crates/ror/src/main.rs
++++ b/crates/ror/src/main.rs
+@@ -1238,6 +1238,8 @@ fn studio(command: StudioCommand) -> Result<()> {
+ 					println!("closing the capture Studio (process {pid})");
+ 					ror::studio::capture::terminate(pid)?;
+ 				}
++				#[cfg(not(windows))]
++				bail!("close the {} window in Studio first (--restart cannot close it here)", studio.name);
+ 			}
+ 			let mut environment = ror::scene::Environment::default();
+ 			if let Some(name) = technology {
+@@ -1247,7 +1249,15 @@ fn studio(command: StudioCommand) -> Result<()> {
+ 			output::write_atomic(&path, &place::build_with(&environment, !pre2022, mesh_lods)?)?;
+ 			let exe = ror::studio::studio_executable().context("Roblox Studio is not installed")?;
+ 			// Studio must not inherit this process's pipes (a caller reading them would wait for Studio)
+-			std::process::Command::new(exe)
++			#[cfg(target_os = "macos")]
++			let mut command = {
++				let mut command = std::process::Command::new("open");
++				command.arg("-a").arg(&exe);
++				command
++			};
++			#[cfg(not(target_os = "macos"))]
++			let mut command = std::process::Command::new(exe);
++			command
+ 				.arg(&path)
+ 				.stdin(std::process::Stdio::null())
+ 				.stdout(std::process::Stdio::null())
+@@ -1330,7 +1340,7 @@ fn studio(command: StudioCommand) -> Result<()> {
+ 			Ok(())
+ 		}
+ 		StudioCommand::Capture { out } => {
+-			#[cfg(windows)]
++			#[cfg(any(windows, target_os = "macos"))]
+ 			{
+ 				let out = output::studio_capture_path(out)?;
+ 				let mut studio = CaptureStudio::connect()?;
+@@ -1339,17 +1349,17 @@ fn studio(command: StudioCommand) -> Result<()> {
+ 				println!("{} ({width}x{height})", out.display());
+ 				Ok(())
+ 			}
+-			#[cfg(not(windows))]
++			#[cfg(not(any(windows, target_os = "macos")))]
+ 			{
+ 				let _ = out;
+-				bail!("viewport capture needs Windows")
++				bail!("viewport capture needs Windows or macOS")
+ 			}
+ 		}
+ 	}
+ }
+ 
+ fn compare(args: CompareArgs) -> Result<()> {
+-	#[cfg(windows)]
++	#[cfg(any(windows, target_os = "macos"))]
+ 	{
+ 		let name = args.input.file_stem().map(|stem| stem.to_string_lossy().to_string()).unwrap_or_else(|| "compare".into());
+ 		let out = match args.out {
+@@ -1393,10 +1403,10 @@ fn compare(args: CompareArgs) -> Result<()> {
+ 		println!("{}", serde_json::to_string_pretty(&report)?);
+ 		Ok(())
+ 	}
+-	#[cfg(not(windows))]
++	#[cfg(not(any(windows, target_os = "macos")))]
+ 	{
+ 		let _ = args;
+-		bail!("compare needs Windows (Studio capture)")
++		bail!("compare needs Windows or macOS (Studio capture)")
+ 	}
+ }
+ 
+diff --git a/crates/ror/src/studio/compare.rs b/crates/ror/src/studio/compare.rs
+index faa701b..325e168 100644
+--- a/crates/ror/src/studio/compare.rs
++++ b/crates/ror/src/studio/compare.rs
+@@ -277,7 +277,7 @@ pub fn material_bytes(document: &scene::load::Document, materials: &scene::Mater
+ }
+ 
+ /// A model loaded into the capture Studio, captured under any lighting and camera.
+-#[cfg(windows)]
++#[cfg(any(windows, target_os = "macos"))]
+ pub struct CaptureSession<'a> {
+ 	/// None: offline, captures only come from the cache ([`offline_studio`])
+ 	pub studio: Option<&'a mut CaptureStudio>,
+@@ -313,7 +313,7 @@ pub fn offline_studio() -> Option<String> {
+ 	std::env::var("ROR_CAPTURE_OFFLINE").ok().filter(|identity| identity.contains('|'))
+ }
+ 
+-#[cfg(windows)]
++#[cfg(any(windows, target_os = "macos"))]
+ impl<'a> CaptureSession<'a> {
+ 	/// A session over the capture cache alone, for the Studio and materials `identity` names
+ 	/// ([`offline_studio`]) at the capture Studio's viewport size.
+@@ -377,8 +377,20 @@ return provider.RequestQueueSize",
+ 		Self { studio: Some(studio), width, height, model_key, lighting_key: 0, reuse: std::env::var("ROR_RECAPTURE").is_err(), reused: 0, materials_2022 }
+ 	}
+ 
++	/// The viewport's size as captured on macOS (logical pixels, the MCP's StudioCaptureService):
++	/// whatever size the Studio window gives it.
++	#[cfg(target_os = "macos")]
++	fn size_window(studio: &mut CaptureStudio) -> Result<(u32, u32)> {
++		let (width, height) = studio.viewport()?;
++		if (width - width.round()).abs() > 0.01 || (height - height.round()).abs() > 0.01 {
++			bail!("the capture Studio's viewport is {width}x{height} logical px; resize its window");
++		}
++		Ok((width.round() as u32, height.round() as u32))
++	}
++
+ 	/// Puts the capture Studio's window back to the capture viewport; the viewport's size in physical
+ 	/// pixels.
++	#[cfg(windows)]
+ 	fn size_window(studio: &mut CaptureStudio) -> Result<(u32, u32)> {
+ 		let mut window = studio.window()?;
+ 		let (mut logical_width, mut logical_height) = studio.viewport()?;
+@@ -578,7 +590,7 @@ pub fn derived_images() -> bool {
+ 	std::env::var_os("ROR_DIFF_IMAGES").is_some_and(|value| value != "0")
+ }
+ 
+-#[cfg(windows)]
++#[cfg(any(windows, target_os = "macos"))]
+ pub fn run(renderer: &Renderer, options: &CompareOptions) -> Result<CompareReport> {
+ 	// a file, else an asset id or content URI (as `ror render` takes them)
+ 	let mut document = if options.input.is_file() {
+@@ -641,7 +653,7 @@ pub fn run(renderer: &Renderer, options: &CompareOptions) -> Result<CompareRepor
+ }
+ 
+ /// Each view captured in Studio and drawn by ror ([`run`]); the assets ror missed.
+-#[cfg(windows)]
++#[cfg(any(windows, target_os = "macos"))]
+ fn compare_views(renderer: &Renderer, options: &CompareOptions, scene: &scene::Scene, session: &mut CaptureSession, width: u32, height: u32) -> Result<(Vec<ViewReport>, Vec<String>)> {
+ 	std::fs::create_dir_all(&options.out)?;
+ 	let mut reports = Vec::new();
+diff --git a/crates/ror/src/studio/mcp.rs b/crates/ror/src/studio/mcp.rs
+index d14bc6d..dee6d51 100644
+--- a/crates/ror/src/studio/mcp.rs
++++ b/crates/ror/src/studio/mcp.rs
+@@ -109,6 +109,16 @@ impl Mcp {
+ 			})
+ 	}
+ 
++	/// The Studio's 3D viewport as PNG bytes (the bridge's `capture_viewport` tool: Studio's own
++	/// StudioCaptureService, logical pixels). Where window capture is unavailable (macOS).
++	pub fn capture_png(&mut self, studio: &str) -> Result<Vec<u8>> {
++		let (text, is_error) = self.call_tool("capture_viewport", json!({"studio_id": studio}))?;
++		if is_error {
++			bail!("Studio: {text}");
++		}
++		base64_decode(text.trim())
++	}
++
+ 	/// Runs Luau in the Edit datamodel and returns its result text.
+ 	pub fn run_luau(&mut self, studio: &str, code: &str) -> Result<String> {
+ 		let (text, is_error) = self.call_tool("execute_luau", json!({"studio_id": studio, "datamodel_type": "Edit", "code": code}))?;
+diff --git a/crates/ror/src/studio/mod.rs b/crates/ror/src/studio/mod.rs
+index b011d73..d242d7e 100644
+--- a/crates/ror/src/studio/mod.rs
++++ b/crates/ror/src/studio/mod.rs
+@@ -75,6 +75,15 @@ impl CaptureStudio {
+ 	}
+ }
+ 
++#[cfg(not(windows))]
++impl CaptureStudio {
++	/// Captures the 3D viewport through the MCP (logical pixels).
++	pub fn capture_viewport(&mut self) -> Result<(u32, u32, Vec<u8>)> {
++		let png = self.mcp.capture_png(&self.id)?;
++		crate::output::decode_png_bytes(&png)
++	}
++}
++
+ /// Waits for exclusive use of the capture Studio (a lock file per capture place).
+ fn lock_capture_studio() -> Result<std::fs::File> {
+ 	let dir = crate::output::state_dir().join("studio");
+@@ -88,7 +97,18 @@ fn lock_capture_studio() -> Result<std::fs::File> {
+ 	Ok(file)
+ }
+ 
++/// RobloxStudio.app (`open -a` launches it with a place).
++#[cfg(target_os = "macos")]
++pub fn studio_executable() -> Option<std::path::PathBuf> {
++	let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
++	[Some(std::path::PathBuf::from("/Applications/RobloxStudio.app")), home.map(|home| home.join("Applications").join("RobloxStudio.app"))]
++		.into_iter()
++		.flatten()
++		.find(|path| path.is_dir())
++}
++
+ /// RobloxStudioBeta.exe of the newest installed Studio version.
++#[cfg(not(target_os = "macos"))]
+ pub fn studio_executable() -> Option<std::path::PathBuf> {
+ 	let versions = std::path::Path::new(&std::env::var_os("LOCALAPPDATA")?).join("Roblox").join("Versions");
+ 	let mut candidates: Vec<(std::time::SystemTime, std::path::PathBuf)> = std::fs::read_dir(versions)

@@ -48,7 +48,19 @@ for _, tool in { "ree", "ror", "rur-native" } do
 		})
 	else
 		run("git", { "-C", path, "fetch", "--quiet", "--depth", "1", "origin", "tag", tag })
-		run("git", { "-C", path, "checkout", "--quiet", tag })
+		-- --force: patches below re-apply on a clean tree (edits made in a checkout are discarded)
+		run("git", { "-C", path, "checkout", "--quiet", "--force", tag })
+	end
+	local patches = `patches/{tool}`
+	if fs.isDir(patches) then
+		local names = fs.readDir(patches)
+		table.sort(names)
+		for _, name in names do
+			if string.sub(name, -6) == ".patch" then
+				run("git", { "-C", path, "apply", `{process.cwd}/{patches}/{name}` })
+				print(`{repo}: applied {name}`)
+			end
+		end
 	end
 	print(`{repo} at {tag}`)
 end

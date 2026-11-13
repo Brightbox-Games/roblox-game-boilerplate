@@ -11,7 +11,7 @@ function token() {
 	return readFileSync(join(homedir(), ".robloxstudio-mcp", "auth-token"), "utf8").trim();
 }
 
-async function callTool(name, body) {
+async function post(name, body) {
 	const response = await fetch(`${mcpUrl}/mcp/${name}`, {
 		method: "POST",
 		headers: { "content-type": "application/json", "x-mcp-auth": token() },
@@ -21,7 +21,11 @@ async function callTool(name, body) {
 	if (!response.ok) {
 		throw new Error(`robloxstudio-mcp ${name} failed (${response.status}): ${text}`);
 	}
-	const json = JSON.parse(text);
+	return JSON.parse(text);
+}
+
+async function callTool(name, body) {
+	const json = await post(name, body);
 	if (json && Array.isArray(json.content)) {
 		const joined = json.content.map((part) => part.text ?? "").join("");
 		if (json.isError) {
@@ -69,8 +73,24 @@ async function executeLuau(args) {
 	return typeof value === "string" ? value : JSON.stringify(value);
 }
 
+// The 3D viewport as base64 PNG (robloxstudio-mcp's capture_screenshot: StudioCaptureService).
+async function captureViewport(args) {
+	const json = await post("capture_screenshot", { format: "png", instance_id: args.studio_id || undefined });
+	const image = Array.isArray(json?.content) ? json.content.find((part) => part.type === "image") : undefined;
+	if (json?.isError || !image?.data) {
+		const message = Array.isArray(json?.content) ? json.content.map((part) => part.text ?? "").join("") : "";
+		throw new Error(message || `capture_screenshot returned no image: ${JSON.stringify(json).slice(0, 300)}`);
+	}
+	return image.data;
+}
+
 const tools = [
 	{ name: "list_roblox_studios", description: "Open Studio windows", inputSchema: { type: "object", properties: {} } },
+	{
+		name: "capture_viewport",
+		description: "The Studio's 3D viewport as base64 PNG",
+		inputSchema: { type: "object", properties: { studio_id: { type: "string" } } },
+	},
 	{
 		name: "execute_luau",
 		description: "Run Luau in a Studio's edit DataModel and return what the chunk returned",
@@ -95,6 +115,9 @@ async function handle(message) {
 		const { name, arguments: args = {} } = message.params ?? {};
 		if (name === "list_roblox_studios") {
 			return { content: [{ type: "text", text: JSON.stringify(await listStudios()) }] };
+		}
+		if (name === "capture_viewport") {
+			return { content: [{ type: "text", text: await captureViewport(args) }] };
 		}
 		if (name === "execute_luau") {
 			return { content: [{ type: "text", text: await executeLuau(args) }] };
