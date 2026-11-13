@@ -62,6 +62,9 @@ function returnedValue(result) {
 
 async function executeLuau(args) {
 	const result = await callTool("execute_luau", { code: args.code, instance_id: args.studio_id || undefined });
+	if (result && result.success === false) {
+		throw new Error(result.error ?? result.message ?? "execute_luau failed");
+	}
 	const value = returnedValue(result);
 	return typeof value === "string" ? value : JSON.stringify(value);
 }
