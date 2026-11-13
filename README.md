@@ -13,4 +13,4 @@ If you're an agent, please refer to [AGENTS.md](/AGENTS.md) before making any co
 
 ## License
 
-Public domain under [the Unlicense](/LICENSE): do whatever you want with it. Vendored and package dependencies (`vendor/Replica`, `Packages`, `ServerPackages`) keep their own licenses.
+Public domain under [the Unlicense](/LICENSE): do whatever you want with it. Package dependencies (`Packages`) keep their own licenses.

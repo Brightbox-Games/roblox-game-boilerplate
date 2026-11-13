@@ -3,10 +3,8 @@
   "luau-lsp.sourcemap.rojoProjectFile": "default.project.json",
   "luau-lsp.ignoreGlobs": [
     "Packages/**",
-    "ServerPackages/**",
     "build/**",
-    "src/shared/Packet/**",
-    "vendor/**"
+    "src/shared/Packet/**"
   ],
   "luau-lsp.fflags.enableNewSolver": true,
   "[luau]": {

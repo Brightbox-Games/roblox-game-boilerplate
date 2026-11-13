@@ -5,19 +5,19 @@
 - Do not add comments to code. Luau directives such as `--!strict` are allowed.
 - Keep `--!strict` at the top of every Luau file. Run `lune run check` before handing off code changes.
 - The project uses Luau's new type solver: `luau-lsp.fflags.enableNewSolver` in `.vscode/settings.json`, which `lune run check` also reads. In Studio, set **Workspace > UseNewLuauTypeSolver** to `Enabled` so Script Analysis matches.
-- Format with StyLua (tabs, 110 columns, double quotes). Never edit generated `Packages/`, `ServerPackages/`, `build/` or `sourcemap.json`, or vendored code in `vendor/`.
+- Format with StyLua (tabs, 110 columns, double quotes). Never edit generated `Packages/`, `build/` or `sourcemap.json`.
 
 ### Naming
 
 | Thing | Convention | Example |
 | --- | --- | --- |
-| Files, modules, folders | PascalCase, matching the returned table | `PurchaseService.luau`, `RateLimit.luau` |
+| Files, modules, folders | PascalCase, matching the returned table | `ShopService.luau`, `RateLimit.luau` |
 | Services and controllers | PascalCase ending in `Service` or `Controller`; `Name` matches the file | `DataService`, `UIController` |
 | Types | PascalCase; export shared ones with `export type` | `PlayerData.Data`, `Types.Screen` |
-| Public functions, methods, fields and signals | PascalCase | `DataService:GetData`, `DataService.PlayerLoaded` |
+| Public functions, methods, fields and signals | PascalCase | `UIController:Open`, `DataService.PlayerLoaded` |
 | Private fields | `_camelCase` | `self._trove` |
 | Local variables and local functions | camelCase | `local activeSessions`, `local function refresh()` |
-| Constants | camelCase locals, or PascalCase keys in a frozen `Config` table | `local maxReceipts = 100`, `GameConfig.Name` |
+| Constants | camelCase locals, or PascalCase keys in a frozen `Config` table | `local maxRetries = 3`, `GameConfig.Name` |
 | Unused parameters | `_` prefix | `_self`, `_player` |
 | Packets | PascalCase verb or event name | `Buy`, `RoundStarted` |
 | Tags and attributes | PascalCase | `Spinner`, `SpinSpeed`, `Ready` |
@@ -46,7 +46,7 @@ rojo serve default.project.json --address 127.0.0.1
 - `lune run install` downloads the Roblox type definitions (`globalTypes.d.luau`, Git-ignored) if missing, runs `wally install`, then `wally-package-types` so package types (such as `Signal.Signal<T...>`) are visible to strict code. Run it on a fresh clone and after changing `wally.toml`; never run bare `wally install`.
 - On Windows, `./scripts/install.ps1` and `./scripts/check.ps1` are thin wrappers: `install.ps1` runs `rokit install` then `lune run install`, and `check.ps1` runs `lune run check`. Keep logic in the Lune scripts, not the wrappers.
 - Connect the Rojo plugin in Studio to `localhost:34873`. Once the game has a place, add `"servePlaceIds": [<placeId>]` to `default.project.json`.
-- In Studio, enable **Game Settings > Security > Enable Studio Access to API Services** (the place must be published). Without it (or in an unpublished place), ProfileStore falls back to in-memory mock data: everything works, but data resets when Play stops, and `DataService` warns once. Live servers always have DataStore access.
+- In Studio, enable **Game Settings > Security > Enable Studio Access to API Services** (the place must be published). Without it (or in an unpublished place), Scribe saves to an in-memory store: everything works, but data resets when Play stops, and output shows `[ProfileStore]: Roblox API services unavailable - data will not be saved`. Live servers always have DataStore access.
 - In Play, output shows `[Game Boilerplate] Server services ready`, `Client controllers ready` and a Packet round trip. Both Bootstraps set a `Ready` attribute.
 - `lune run check` is the one command to run after every change. It formats `src` and `.lune` with StyLua, regenerates the sourcemap, runs luau-lsp type and lint analysis, and does a Rojo build. Fix every error it reports and rerun it until it passes.
 - `rojo build` output is code-only, not a replacement for the authored place.
@@ -55,20 +55,18 @@ rojo serve default.project.json --address 127.0.0.1
 
 | Files | Studio destination | Contents |
 | --- | --- | --- |
-| `src/server` | `ServerScriptService` | `Bootstrap.server.luau`, `Registry.luau`, `Services/`, `Data/`, `Components/` (create when needed) |
+| `src/server` | `ServerScriptService` | `Bootstrap.server.luau`, `Registry.luau`, `Services/`, `Components/` (create when needed) |
 | `src/client` | `StarterPlayer.StarterPlayerScripts` | `Bootstrap.client.luau`, `Registry.luau`, `Controllers/`, `Components/` |
-| `src/shared` | `ReplicatedStorage` | `Lifecycle`, `Packet/`, `Packets`, `Config/`, `Utils/` |
+| `src/shared` | `ReplicatedStorage` | `Lifecycle`, `Packet/`, `Packets`, `PlayerData/`, `Config/`, `Utils/` |
 | `Packages` | `ReplicatedStorage.Packages` | Generated Wally dependencies |
-| `ServerPackages` | `ServerScriptService.ServerPackages` | Generated server-only Wally dependencies |
-| `vendor/Replica` | `ReplicatedStorage.ReplicaClient`, `ReplicatedStorage.ReplicaShared`, `ServerScriptService.ReplicaServer` | Vendored Replica (see Packages) |
 
 - Edit code on disk; Rojo syncs it. Code lives directly in the service roots, with no Client/Server/Shared wrapper folders.
 - Rojo owns mapped folders. Unknown children at service roots are preserved. Workspace, lighting, GUI and other art are edited and saved in Studio, not on disk.
 - Tag authoring-only content in Workspace (prefab libraries, reference models, anything the game reads from a copy elsewhere) `EditorOnly`. `Bootstrap.server.luau` moves tagged instances into `ServerStorage.EditorOnly` before any system starts, so they stay editable in Studio but are never replicated to players. Never tag something code reads from Workspace.
 - Server-only code (secrets, rules, data) belongs in `src/server`. Everything in `src/shared` is visible to clients.
 - Put tunable constants in `src/shared/Config` as frozen tables, or in server modules if clients must not see them.
-- Put pure logic in plain modules (such as `src/server/Data`) with no service dependencies.
-- Keep `src/shared` tidy: its root holds only the framework (`Lifecycle`, `Packet`, `Packets`) and folders. Reusable, game-agnostic helpers used by more than one system go in `src/shared/Utils` (such as `Utils/RateLimit`), one module per helper. Server-only helpers go in `src/server/Utils`. Helpers used by a single system stay inside that system's folder.
+- Put pure logic in plain modules (such as a system's `Catalog.luau`) with no service dependencies.
+- Keep `src/shared` tidy: its root holds only the framework (`Lifecycle`, `Packet`, `Packets`, `PlayerData`) and folders. Reusable, game-agnostic helpers used by more than one system go in `src/shared/Utils` (such as `Utils/RateLimit`), one module per helper. Server-only helpers go in `src/server/Utils`. Helpers used by a single system stay inside that system's folder.
 
 ## Systems
 
@@ -125,17 +123,21 @@ src/client/Controllers/CameraController/
 ```lua
 --!strict
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlayerData = require(ReplicatedStorage.PlayerData)
 local Catalog = require(script.Parent.Catalog)
 local Types = require(script.Parent.Types)
 
 local Purchasing = {}
 
-function Purchasing.Buy(context: Types.Context, player: Player, itemId: string): boolean
+function Purchasing.Buy(_context: Types.Context, player: Player, itemId: string): boolean
 	local item = Catalog.Get(itemId)
-	if not item then
+	local data = PlayerData.Get(player)
+	if not item or not data or data.Cash.Get() < item.Price then
 		return false
 	end
-	return context.Services.DataService:AdjustCash(player, -item.Price)
+	data.Cash.Increment(-item.Price)
+	return true
 end
 
 return Purchasing
@@ -202,7 +204,7 @@ src/client/Controllers/UIController/
   - Non-modal screens (HUD, notifications) can be open together. Opening a modal screen (shop, settings) closes other modals.
   - Screens may hold state because they are created objects. They own their connections through a Trove and clean them up in `Destroy`.
 - **What screens receive:** `context.Controllers` (the controller registry), `context.Open` and `context.Close`. Screens never require each other; open another screen through `context.Open`.
-- **What screens may do:** send requests through `Packets` and display player data through `context.Controllers.DataController` (see Player data). They never decide outcomes.
+- **What screens may do:** send requests through `Packets` and display player data through `PlayerData.Client` (see Player data). They never decide outcomes.
 - **Finding elements:** look up authored elements by name inside `gui` and check their class (`IsA`) before use, so a renamed element fails visibly rather than erroring.
 - **Complex client logic** such as a placement preview goes in its own controller, which the screen calls through `context.Controllers`.
 
@@ -210,20 +212,21 @@ src/client/Controllers/UIController/
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlayerData = require(ReplicatedStorage.PlayerData)
 local Trove = require(ReplicatedStorage.Packages.Trove)
 local Types = require(script.Parent.Parent.Types)
 
 local Hud = {}
 
-function Hud.new(context: Types.Context, gui: ScreenGui): Types.Screen
+function Hud.new(_context: Types.Context, gui: ScreenGui): Types.Screen
 	local trove = Trove.new()
 
-	trove:Add(context.Controllers.DataController:Observe({ "Cash" }, function(cash: any)
+	local stopCash = PlayerData.Client.Cash.Observe(function(cash: number)
 		local label = gui:FindFirstChild("Cash", true)
 		if label and label:IsA("TextLabel") then
-			label.Text = if type(cash) == "number" then string.format("%d", cash) else "..."
+			label.Text = string.format("%d", cash)
 		end
-	end))
+	end)
 
 	return {
 		Modal = false,
@@ -235,6 +238,7 @@ function Hud.new(context: Types.Context, gui: ScreenGui): Types.Screen
 			gui.Enabled = false
 		end,
 		Destroy = function(_self: Types.Screen)
+			stopCash()
 			trove:Destroy()
 		end,
 	}
@@ -253,6 +257,7 @@ return Hud
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlayerData = require(ReplicatedStorage.PlayerData)
 local Packets = require(ReplicatedStorage.Packets)
 
 local ExampleService = { Name = "ExampleService" }
@@ -263,9 +268,12 @@ function ExampleService.Init(_self: any, registry: { [string]: any })
 end
 
 function ExampleService.Start(_self: any)
+	services.DataService.PlayerLoaded:Connect(function(player: Player, data: PlayerData.Data)
+		print(player.Name, "joined with", data.Cash.Get(), "cash")
+	end)
 	Packets.GetCash.OnServerInvoke = function(player: Player)
-		local data = services.DataService:GetData(player)
-		return if data then data.Cash else 0
+		local data = PlayerData.Get(player)
+		return if data then data.Cash.Get() else 0
 	end
 end
 
@@ -285,13 +293,13 @@ The matching packet in `Packets.luau` would be `GetCash = Packet("GetCash"):Resp
 - `Start(self)` connects events, binds packets and begins work. Other systems are safe to call from here on.
 - Hooks must return promptly. Never yield or run permanent loops inside them; use `task.spawn` or connections instead.
 - `Destroy(self)` disconnects connections, destroys instances and cancels owned threads. It must tolerate a partially completed `Init` and being called when `Start` never ran.
-- Module loading must have no side effects: no connections, instances or yields at require time.
+- Module loading must have no side effects: no connections, instances or yields at require time. The one exception is `ReplicatedStorage.PlayerData`: Scribe starts its player listeners (and `ProcessReceipt`, once products exist) the first time it is required, which is while the registries load.
 - Errors in `Init`/`Start` are reported as `[System.Phase]`; the lifecycle then destroys initialised systems in reverse order and stops startup. Duplicate names and repeated starts are rejected.
 - The server calls `Destroy` through `BindToClose`; the client bootstrap does so when destroyed. Both bootstraps set a `Ready` attribute once startup succeeds.
 
 ### Using other systems
 
-- Access other systems through the registry captured in `Init` (`services.DataService:GetData(player)`), not by requiring their modules directly. Direct requires break when the registry order changes and hide dependencies.
+- Access other systems through the registry captured in `Init` (`services.UIController:Open("Shop")`), not by requiring their modules directly. `PlayerData` is not a system: require it directly so its data stays typed. Direct requires break when the registry order changes and hide dependencies.
 - Dependencies must point one way. If two systems need each other, give one a `Signal` (`ReplicatedStorage.Packages.Signal`) that the other connects to in `Start`, as `DataService.PlayerLoaded` does.
 - Clean up with Trove (`ReplicatedStorage.Packages.Trove`), as `AppController` does, or with plain connection lists.
 
@@ -326,7 +334,7 @@ end
 
 ### Packages
 
-Shared packages are in `ReplicatedStorage.Packages`; server-only ones in `ServerScriptService.ServerPackages`. Add new ones to `wally.toml` and run `lune run install`. Commit `wally.toml` and `wally.lock`.
+Packages are in `ReplicatedStorage.Packages`. Add new ones to `wally.toml` and run `lune run install`. There are no server-only packages; to add one, add a `[server-dependencies]` section to `wally.toml` and map `ServerPackages` to `ServerScriptService.ServerPackages` in `default.project.json`. Commit `wally.toml` and `wally.lock`.
 
 | Package | Use it for |
 | --- | --- |
@@ -336,12 +344,9 @@ Shared packages are in `ReplicatedStorage.Packages`; server-only ones in `Server
 | `Input` | Client input: `Input.Keyboard.new()`, `Input.Mouse.new()`, `Input.Gamepad.new()`, `Input.Touch.new()`, and `Input.PreferredInput.observe(callback)` to adapt UI to the current device. Create them in a controller's `Start` and `Destroy` them in `Destroy`. |
 | `WaitFor` | Waiting for authored instances with a timeout, such as `WaitFor.Child(parent, "Name", 15)`. It returns an untyped Promise: cast it to `any` before chaining (`(WaitFor.Child(parent, "Name", 15) :: any):andThen(...)`), use `:andThen`/`:catch`, and on failure `warn` with the full path and leave that feature disabled rather than hanging. |
 | `TableUtil` | Table helpers (`Copy`, `Sync`, `Reconcile`, `Map`, `Filter`, `Keys`, `Values`, ...). Use it instead of rewriting common helpers. |
-| `ProfileStore` | Server only, used by `DataService` alone. |
-| `Replica` | Replicating player data to clients, used by `DataService` and `DataController`; see Player data. |
+| `Scribe` | Saved, typed, replicated player data and developer products, configured only in `src/shared/PlayerData`; see Player data. Pinned exactly (`=2.7.0`): read its changelog before upgrading. It bundles its own ProfileStore. |
 
-Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor. Do not add packages that duplicate these, Packet or Replica (no Comm, Net, TypedRemote, ReplicaService, Janitor or Knit) without the user's agreement.
-
-Replica ([MadStudioRoblox/Replica](https://github.com/MadStudioRoblox/Replica)) is not on Wally, so it is vendored unmodified in `vendor/Replica` at commit `9cae236`, with its Apache-2.0 `LICENSE`. It requires itself from fixed paths, so `default.project.json` maps it to `ReplicatedStorage.ReplicaClient`, `ReplicatedStorage.ReplicaShared` and `ServerScriptService.ReplicaServer`; do not move it. `vendor/.luaurc` turns off type checking for it. To update, replace `src/`, `LICENSE` and `README.md` with a newer upstream commit, update the commit above, and run `lune run check` and a Play test. Do not use Wally forks of Replica without checking them.
+Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor. Do not add packages that duplicate these, Packet or Scribe (no Comm, Net, TypedRemote, ProfileStore, Replica, ReplicaService, Janitor or Knit) without the user's agreement.
 
 ### Networking
 
@@ -354,30 +359,28 @@ Replica ([MadStudioRoblox/Replica](https://github.com/MadStudioRoblox/Replica)) 
 - Length limits are in bytes: `String`, `Buffer`, `Characters` and `Any` strings take at most 255, `StringLong` and `BufferLong` at most 65,535, and arrays at most 65,535 elements. Sending a longer value errors in the sender and nothing is sent. Before sending player-supplied text (names, chat, textbox input), check its byte length on the server, or use `StringLong`.
 - `src/shared/Packet` is our fork of Suphi Kaner's Packet 1.7 with local security fixes: per-packet rate limits, rejecting unbuffered client messages, binding each awaited response to its packet, checking Instance arguments, and erroring on over-long values instead of corrupting the stream. Do not replace it with an upstream or Wally copy; port upstream fixes by hand.
 - For limits that are not per packet (per action, per target, shared across packets), use `Utils/RateLimit` directly: `local limiter = RateLimit.new(3, 10)`, then `limiter:Allow(player)`. Call `limiter:Remove(player)` when the player leaves.
-- Packet is for actions and Replica is for state. Clients send requests and receive events through Packet; the server's player data reaches clients through Replica (see Player data). Do not add packets that mirror data a replica already holds.
+- Packet is for actions and Scribe is for player data. Clients send requests and receive events through Packet; the server's player data reaches clients through Scribe (see Player data). Do not add packets that mirror player data.
 - Prefer Packet over RemoteEvents and RemoteFunctions. Use attributes only for simple values that belong to an instance, such as a plot's owner or the Bootstraps' `Ready`.
 
 ### Player data
 
-- Only `DataService` touches ProfileStore. Other services call `GetData`, `Set`, `AdjustCash`, `GetReplica`, `RequestSave` and `WaitForSave`.
-- Each loaded player's profile data is wrapped in a `PlayerData` replica that replicates to that player only. The replica's `Data` is the profile's data table, so a change made through the replica is saved as well as replicated.
-- Change data that clients show only through the replica: `DataService:Set(player, { "Cash" }, 10)`, `DataService:AdjustCash(player, 10)`, or `DataService:GetReplica(player)` for `SetValues`, `TableInsert` and `TableRemove`. Assigning to the data table directly saves but never reaches the client. Only server bookkeeping (`SchemaVersion`, `LastSeenAt`, `Receipts`) and final writes in `PlayerReleasing` are written directly; clients must not read those fields.
-- Replicated data cannot contain arrays with gaps or keys that are not strings or numbers.
-- The whole data table is sent once when the player loads; after that each change sends only its path and value to the owner. `DataService:Set` skips unchanged non-table values. Keep traffic small: change the deepest path that changed rather than setting a whole table, group related changes with `SetValues`, and never change player data every frame (per-frame values belong in Packet events or client-side state).
-- On the client, read data through `DataController`: `Get(path?)` returns the current value (nil until loaded), `Observe(path, callback)` calls `callback(value)` once the data loads and after every change at, above or below `path`, and returns a connection to add to a Trove. `Loaded` fires once with the data table and `IsLoaded()` checks it. Treat values from `Get` as read-only.
-- Data that other players should see (leaderboards, public stats) needs its own replica with `:Replicate()`, or an attribute; never replicate another player's `PlayerData`.
-- For per-player setup, connect to `DataService.PlayerLoaded(player, data)` in `Start`, not `Players.PlayerAdded` (which fires before data exists). Loading always yields, so every service that connects in `Start` sees every player, including those already in the server.
-- For per-player cleanup, connect to `DataService.PlayerReleasing(player, data)`. It fires just before the session is saved and released, on leave and on shutdown. Write final state into `data` there, without yielding. `DataService` is registered first, so it is destroyed last; do not disconnect `PlayerLoaded`/`PlayerReleasing` connections in your own `Destroy`, or the shutdown release will miss you.
-- Check `GetData` for nil in every handler, and never keep the data table across a yield. On the client, show data through `DataController:Observe` so nothing is shown before it loads.
-- When adding a field, update `Data`, `Template` and `Validate` in `src/server/Data/PlayerData.luau` together. Add an explicit migration before changing `SchemaVersion`. Never reset progress for invalid data.
+Player data is saved, typed and replicated by [Scribe](https://ericplane.github.io/Scribe/), configured in `src/shared/PlayerData/init.luau`. Read its docs before using a feature not described here.
+
+- **Template:** `Template` in `PlayerData/init.luau` declares every field. Use declarators for rules: `Cash = Scribe.Int(0, { Min = 0 })`. Out-of-range writes are clamped, so check balances before spending: `Increment(-price)` on too little cash clamps to 0 instead of failing. Wrap fields that must not reach the client in `Scribe.ServerOnly(...)`, fields every client should see in `Scribe.Shared(...)`, and runtime-only state in `Scribe.Session(...)`.
+- **Server reads and writes:** `PlayerData.Get(player)` returns the typed data, or `nil` while the player is loading or leaving. Check for nil in every handler and never keep the data across a yield. Read with `data.Cash.Get()` and write with `Set`, `Increment` and the other accessor methods; every write is validated, saved and sent to the owner. `PlayerData.Server.Get(player)` errors unless the player is loaded, so use it only inside `PlayerLoaded` handlers.
+- **Client reads:** `PlayerData.Client.Cash.Observe(callback)` calls `callback(value)` at once (with the template default until data arrives) and after every change, and returns a function that stops observing; call it in `Destroy`. Use `PlayerData.Client.WaitForData()` or `IsReady()` to gate one-off logic. The client mirror is read-only; changes go through Packet requests that a service validates.
+- **Per-player setup:** connect to `DataService.PlayerLoaded(player, data)` in `Start`, not `Players.PlayerAdded`. It fires after the player's data is ready and after every system has started, so every service that connects in `Start` sees every player.
+- **Per-player cleanup:** connect to `DataService.PlayerReleasing(player, data)`. It fires before the final save, on leave and on shutdown. Write final state into `data` there, without yielding. It may be skipped when another server takes over the session, so do not rely on it as the only place a value is written. Do not disconnect it in your own `Destroy`, or the shutdown save will miss you.
+- **Keep traffic small:** change the deepest field that changed, group related writes with `PlayerData.Server.Batch`, and never change player data every frame (per-frame values belong in Packet events or client-side state).
+- **Changing the template:** adding a field with a default needs nothing else; existing players get the default. Renaming, removing or changing a field's type needs a migration (see the Migrations section of Scribe's "Offline Profiles" guide). Never reset progress for invalid data.
+- **Stores:** Studio saves to `PlayerData_Studio`, live servers to `PlayerData`. Keep `ProfileStoreIndex` and `ProfileKeyPrefix` unchanged once real players have data.
 
 ### Purchases
 
-`PurchaseService` owns `MarketplaceService.ProcessReceipt`. Nothing else may set it; Roblox allows only one handler.
+Scribe owns `MarketplaceService.ProcessReceipt` once any product is declared. Nothing else may set it; Roblox allows only one handler.
 
-- **Adding a developer product:** add `[productId] = function(player, services): boolean` to `src/server/Services/PurchaseService/Products.luau`. Return `true` once the reward is granted, `false` to have Roblox retry later.
-- **Grants change only the player's profile data** (through `services.DataService`), such as `services.DataService:AdjustCash(player, 500)`. The receipt ID is recorded in the same profile (`Receipts`), and the purchase is confirmed only after one save contains both, so a crash cannot grant twice or lose a paid reward. Rewards outside the profile (server-wide effects) are not protected this way; ask the user before adding them.
-- Grants must not yield, prompt or wait on the player: the receipt is recorded right after the grant returns, and a yield would let a save capture the reward without it. If the player has left or their data is not loaded, the purchase stays pending and Roblox retries it when they next join.
-- Prompt purchases from the client with `MarketplaceService:PromptProductPurchase(player, productId)`; never grant from a client request.
-- Game passes are not receipts: check ownership with `MarketplaceService:UserOwnsGamePassAsync` on the server (and on `PromptGamePassPurchaseFinished`), not in `Products`.
-- The last 100 receipt IDs are kept per player.
+- **Adding a developer product:** add `Name = { Id = productId, Grant = function(data, player) ... end }` to `src/shared/PlayerData/Products.luau`. Scribe grants it, records the receipt in the player's profile, and confirms the purchase to Roblox only after a save contains both, so a crash cannot grant twice or lose a paid reward.
+- **Grants change only the player's data**, such as `data.Cash.Increment(500)`. They must not yield, prompt or touch anything outside the profile; rewards outside the profile (server-wide effects, tools in the Backpack) are not protected against retries, so ask the user before adding them.
+- `Products.luau` is in `src/shared`, so clients can read it. Product IDs are public anyway, but never put secrets or server-only logic in a grant.
+- Prompt purchases by name from the client with `PlayerData.Client.PromptPurchase("Name")`; never grant from a client request.
+- Game passes go in a `Passes` table in the Scribe options (`VIP = { Id = passId }`). Check ownership on the server with `PlayerData.Server.OwnsAsync(player, "VIP")`.
