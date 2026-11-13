@@ -341,10 +341,11 @@ Packages are in `ReplicatedStorage.Packages`. Add new ones to `wally.toml` and r
 | `Trove` | Cleaning up connections, instances and threads owned by a system or component. |
 | `Signal` | Custom events between systems. Also used by Packet for `OnServerEvent`/`OnClientEvent`. Prefer `Fire`; Packet uses `FireDeferred`. |
 | `Component` | Tag-driven behaviour; see Components. |
-| `Input` | Client input: `Input.Keyboard.new()`, `Input.Mouse.new()`, `Input.Gamepad.new()`, `Input.Touch.new()`, and `Input.PreferredInput.observe(callback)` to adapt UI to the current device. Create them in a controller's `Start` and `Destroy` them in `Destroy`. |
+| `Input` | Client input: `Input.Keyboard.new()`, `Input.Mouse.new()`, `Input.Gamepad.new()`, `Input.Touch.new()`, and `Input.PreferredInput.observe(callback)` to adapt UI to the current device. Create them in a controller's `Start` and `Destroy` them in `Destroy`. Its inferred types do not work under the new solver (signals type as `unknown`); for a single key binding, `UserInputService.InputBegan` is simpler and fully typed, as `DebugController` does. |
 | `WaitFor` | Waiting for authored instances with a timeout, such as `WaitFor.Child(parent, "Name", 15)`. It returns an untyped Promise: cast it to `any` before chaining (`(WaitFor.Child(parent, "Name", 15) :: any):andThen(...)`), use `:andThen`/`:catch`, and on failure `warn` with the full path and leave that feature disabled rather than hanging. |
 | `TableUtil` | Table helpers (`Copy`, `Sync`, `Reconcile`, `Map`, `Filter`, `Keys`, `Values`, ...). Use it instead of rewriting common helpers. |
 | `Conch`, `ConchUi` | The in-game admin console; see Admin console. |
+| `Iris` | Immediate-mode debug UI, admins and Studio only; see Debug UI. |
 | `Scribe` | Saved, typed, replicated player data and developer products, configured only in `src/shared/PlayerData`; see Player data. Pinned exactly (`=2.7.0`): read its changelog before upgrading. It bundles its own ProfileStore. |
 
 Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor. Do not add packages that duplicate these, Packet or Scribe (no Comm, Net, TypedRemote, ProfileStore, Replica, ReplicaService, Cmdr, Janitor or Knit) without the user's agreement.
@@ -396,3 +397,11 @@ Scribe owns `MarketplaceService.ProcessReceipt` once any product is declared. No
 - **Validate arguments in the callback.** Conch passes the arguments the client sent straight to the callback without checking their types, so check them (`typeof`, ranges, that a player is still in the game) as you would for a Packet handler.
 - Never add a command that grants roles or edits `AdminConfig` at runtime. Change admins in `AdminConfig` and redeploy.
 - Commands that change player data use `PlayerData.Get(player)` like any other server code.
+
+### Debug UI
+
+`DebugController` runs [Iris](https://sirmallard.github.io/Iris/) for admins only (`Utils/IsAdmin`, so everyone in Studio). Other players never create any Iris UI. **F3** toggles a Debug window with FPS, the player's `Cash`, and a checkbox for Iris's demo window, which shows every available widget.
+
+- Add debug panels inside the `Iris:Connect` callback in `DebugController`, or in a `DebugController/Panels.luau` child once there are several. Like the admin console, Iris builds UI in code; the "build UI in Studio" rule does not apply to it.
+- Debug panels only show and tweak values. Anything that changes server state goes through a Conch command or a Packet request that the server validates, never straight from an Iris button.
+- Keep work in the callback light: it runs every frame for admins, even while the window is closed.
