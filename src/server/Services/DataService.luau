@@ -20,13 +20,13 @@ local DataService = {
 local sessions: DataSessions.DataSessions? = nil
 local token: any = nil
 local replicas: { [Player]: ReplicaServer.Replica } = {}
-local connections: { { Disconnect: (self: any) -> () } } = {}
+local connections: { { Disconnect: (self: any) -> ...any } } = {}
 local stopped = false
 local warnedMock = false
 
 function DataService.Init(_self: any, _services: { [string]: any })
 	local storeName = if RunService:IsStudio() then "PlayerData_Studio" else "PlayerData"
-	local store = ProfileStore.New(storeName, PlayerData.Template)
+	local store = ProfileStore.New(storeName, PlayerData.Template :: any)
 	sessions = DataSessions.new(store :: any, function(player)
 		return player.Parent == Players
 	end)

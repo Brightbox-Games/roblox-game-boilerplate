@@ -58,7 +58,7 @@ function UIController.Start(_self: any)
 		end,
 	}
 	for name, module in modules do
-		local promise = WaitFor.Child(Players.LocalPlayer, "PlayerGui", 15)
+		local promise = (WaitFor.Child(Players.LocalPlayer, "PlayerGui", 15) :: any)
 			:andThen(function(playerGui: Instance)
 				return WaitFor.Child(playerGui, name, 15)
 			end)

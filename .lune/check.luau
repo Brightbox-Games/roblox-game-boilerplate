@@ -11,7 +11,13 @@ end
 
 run("stylua", { "src", ".lune" })
 run("rojo", { "sourcemap", "default.project.json", "--output", "sourcemap.json" })
-run("luau-lsp", { "analyze", "--definitions=globalTypes.d.luau", "--sourcemap=sourcemap.json", "./src" })
+run("luau-lsp", {
+	"analyze",
+	"--settings=.vscode/settings.json",
+	"--definitions=globalTypes.d.luau",
+	"--sourcemap=sourcemap.json",
+	"./src",
+})
 if not fs.isDir("build") then
 	fs.writeDir("build")
 end

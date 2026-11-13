@@ -1,10 +1,10 @@
 --!strict
 
 export type System = {
-	Name: string,
-	Init: ((self: any, systems: { [string]: any }) -> ())?,
-	Start: ((self: any) -> ())?,
-	Destroy: ((self: any) -> ())?,
+	read Name: string,
+	read Init: ((self: any, systems: { [string]: any }) -> ())?,
+	read Start: ((self: any) -> ())?,
+	read Destroy: ((self: any) -> ())?,
 }
 
 local Lifecycle = {}
@@ -35,11 +35,14 @@ function Lifecycle.Destroy(self: Lifecycle)
 		local system = self._initialized[index]
 		local destroy = system.Destroy
 		if destroy then
-			local ok, message = xpcall(function()
+			local failure = "unknown error"
+			local ok = xpcall(function()
 				destroy(system)
-			end, debug.traceback)
+			end, function(err: any)
+				failure = debug.traceback(tostring(err), 2)
+			end)
 			if not ok then
-				warn(`[{system.Name}.Destroy] {message}`)
+				warn(`[{system.Name}.Destroy] {failure}`)
 			end
 		end
 	end
@@ -51,7 +54,8 @@ function Lifecycle.Start(self: Lifecycle)
 	self._state = "Starting"
 	local phase = "Init"
 	local activeName = "unknown"
-	local ok, message = xpcall(function()
+	local failure = "unknown error"
+	local ok = xpcall(function()
 		for _, system in self._systems do
 			activeName = system.Name
 			table.insert(self._initialized, system)
@@ -68,10 +72,12 @@ function Lifecycle.Start(self: Lifecycle)
 				start(system)
 			end
 		end
-	end, debug.traceback)
+	end, function(err: any)
+		failure = debug.traceback(tostring(err), 2)
+	end)
 	if not ok then
 		self:Destroy()
-		error(`[{activeName}.{phase}] {message}`, 0)
+		error(`[{activeName}.{phase}] {failure}`, 0)
 	end
 	self._state = "Started"
 end

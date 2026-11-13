@@ -4,6 +4,7 @@
 
 - Do not add comments to code. Luau directives such as `--!strict` are allowed.
 - Keep `--!strict` at the top of every Luau file. Run `lune run check` before handing off code changes.
+- The project uses Luau's new type solver: `luau-lsp.fflags.enableNewSolver` in `.vscode/settings.json`, which `lune run check` also reads. In Studio, set **Workspace > UseNewLuauTypeSolver** to `Enabled` so Script Analysis matches.
 - Format with StyLua (tabs, 110 columns, double quotes). Never edit generated `Packages/`, `ServerPackages/`, `build/` or `sourcemap.json`, or vendored code in `vendor/`.
 
 ### Naming
@@ -245,31 +246,30 @@ return Hud
 ### Adding a system
 
 1. Create `src/server/Services/NameService.luau` or `src/client/Controllers/NameController.luau`.
-2. Return a table with a unique `Name` matching the file name, and optional `Init`, `Start` and `Destroy`.
+2. Return a plain table with a unique `Name` matching the file name, and optional `Init`, `Start` and `Destroy`. Do not annotate it as `Lifecycle.System`: that type is read-only, so defining methods on an annotated table fails. The registry's `{ Lifecycle.System }` list checks the shape.
 3. Add a `require` to that side's `Registry.luau`, after every system it depends on.
 
 ```lua
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Lifecycle = require(ReplicatedStorage.Lifecycle)
 local Packets = require(ReplicatedStorage.Packets)
 
-local ExampleService: Lifecycle.System = { Name = "ExampleService" }
+local ExampleService = { Name = "ExampleService" }
 local services: { [string]: any } = {}
 
-function ExampleService.Init(_self: Lifecycle.System, registry: { [string]: any })
+function ExampleService.Init(_self: any, registry: { [string]: any })
 	services = registry
 end
 
-function ExampleService.Start(_self: Lifecycle.System)
+function ExampleService.Start(_self: any)
 	Packets.GetCash.OnServerInvoke = function(player: Player)
 		local data = services.DataService:GetData(player)
 		return if data then data.Cash else 0
 	end
 end
 
-function ExampleService.Destroy(_self: Lifecycle.System)
+function ExampleService.Destroy(_self: any)
 	Packets.GetCash.OnServerInvoke = nil
 end
 
@@ -334,7 +334,7 @@ Shared packages are in `ReplicatedStorage.Packages`; server-only ones in `Server
 | `Signal` | Custom events between systems. Also used by Packet for `OnServerEvent`/`OnClientEvent`. Prefer `Fire`; Packet uses `FireDeferred`. |
 | `Component` | Tag-driven behaviour; see Components. |
 | `Input` | Client input: `Input.Keyboard.new()`, `Input.Mouse.new()`, `Input.Gamepad.new()`, `Input.Touch.new()`, and `Input.PreferredInput.observe(callback)` to adapt UI to the current device. Create them in a controller's `Start` and `Destroy` them in `Destroy`. |
-| `WaitFor` | Waiting for authored instances with a timeout, such as `WaitFor.Child(parent, "Name", 15)`. It returns a Promise: use `:andThen`/`:catch`, and on failure `warn` with the full path and leave that feature disabled rather than hanging. |
+| `WaitFor` | Waiting for authored instances with a timeout, such as `WaitFor.Child(parent, "Name", 15)`. It returns an untyped Promise: cast it to `any` before chaining (`(WaitFor.Child(parent, "Name", 15) :: any):andThen(...)`), use `:andThen`/`:catch`, and on failure `warn` with the full path and leave that feature disabled rather than hanging. |
 | `TableUtil` | Table helpers (`Copy`, `Sync`, `Reconcile`, `Map`, `Filter`, `Keys`, `Values`, ...). Use it instead of rewriting common helpers. |
 | `ProfileStore` | Server only, used by `DataService` alone. |
 | `Replica` | Replicating player data to clients, used by `DataService` and `DataController`; see Player data. |
