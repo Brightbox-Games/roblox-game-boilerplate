@@ -1,0 +1,31 @@
+{
+  "name": "Game Boilerplate (tests)",
+  "tree": {
+    "$className": "DataModel",
+    "$ignoreUnknownInstances": true,
+    "ReplicatedStorage": {
+      "$ignoreUnknownInstances": true,
+      "$path": "src/shared",
+      "Packages": {
+        "$path": "Packages"
+      },
+      "DevPackages": {
+        "$path": "DevPackages"
+      },
+      "Tests": {
+        "$path": "tests"
+      }
+    },
+    "ServerScriptService": {
+      "$ignoreUnknownInstances": true,
+      "$path": "src/server"
+    },
+    "StarterPlayer": {
+      "$ignoreUnknownInstances": true,
+      "StarterPlayerScripts": {
+        "$ignoreUnknownInstances": true,
+        "$path": "src/client"
+      }
+    }
+  }
+}

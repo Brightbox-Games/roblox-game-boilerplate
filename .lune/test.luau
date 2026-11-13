@@ -24,8 +24,13 @@ local function runHarness(path: string, context: string): boolean
 		table.insert(args, arg)
 	end
 	local result = process.exec("ree", args)
-	local lines = string.split(string.gsub(result.stdout, "%s+$", ""), "\n")
-	local ok, report = pcall(serde.decode, "json" :: "json", lines[#lines])
+	local reportLine = nil
+	for _, line in string.split(result.stdout, "\n") do
+		if string.sub(line, 1, 1) == "{" then
+			reportLine = line
+		end
+	end
+	local ok, report = pcall(serde.decode, "json" :: "json", reportLine or "")
 	if not ok or type(report) ~= "table" then
 		print(`FAIL {path}: ree printed no report\n{result.stdout}{result.stderr}`)
 		return false

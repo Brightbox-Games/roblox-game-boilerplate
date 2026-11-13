@@ -10,7 +10,7 @@ if not fs.isFile("globalTypes.d.luau") or not fs.isDir("Packages") then
 end
 
 run("stylua", { "src", ".lune", "tests" })
-run("rojo", { "sourcemap", "default.project.json", "--output", "sourcemap.json" })
+run("rojo", { "sourcemap", "test.project.json", "--output", "sourcemap.json" })
 run("luau-lsp", {
 	"analyze",
 	"--settings=.vscode/settings.json",

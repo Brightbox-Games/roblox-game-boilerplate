@@ -23,7 +23,7 @@ local function collect(node: { [string]: any }, path: string, mounts: { string }
 end
 
 local function mounts(): { string }
-	local project = serde.decode("json", fs.readFile("default.project.json"))
+	local project = serde.decode("json", fs.readFile("test.project.json"))
 	local result = {}
 	collect(project.tree, "", result)
 	return result

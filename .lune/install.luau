@@ -23,8 +23,11 @@ if not fs.isFile("globalTypes.d.luau") then
 end
 
 run("wally", { "install" })
-run("rojo", { "sourcemap", "default.project.json", "--output", "sourcemap.json" })
+run("rojo", { "sourcemap", "test.project.json", "--output", "sourcemap.json" })
 run("wally-package-types", { "--sourcemap", "sourcemap.json", "Packages/" })
+if fs.isDir("DevPackages") then
+	run("wally-package-types", { "--sourcemap", "sourcemap.json", "DevPackages/" })
+end
 if fs.isDir("ServerPackages") then
 	run("wally-package-types", { "--sourcemap", "sourcemap.json", "ServerPackages/" })
 end

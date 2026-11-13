@@ -43,8 +43,9 @@ rojo serve default.project.json --address 127.0.0.1
 ```
 
 - `rokit install` installs the pinned tools. On first run it asks the user to trust each new tool author; that prompt needs a real terminal, so ask the user to run it rather than bypassing it.
-- `lune run install` downloads the Roblox type definitions (`globalTypes.d.luau`, Git-ignored) if missing, runs `wally install`, then `wally-package-types` so package types (such as `Signal.Signal<T...>`) are visible to strict code. Run it on a fresh clone and after changing `wally.toml`; never run bare `wally install`.
+- `lune run install` downloads the Roblox type definitions (`globalTypes.d.luau`, Git-ignored) if missing, runs `wally install`, then `wally-package-types` on `Packages` and `DevPackages` so package types (such as `Signal.Signal<T...>`) are visible to strict code. Run it on a fresh clone and after changing `wally.toml`; never run bare `wally install`.
 - On Windows, `./scripts/install.ps1` and `./scripts/check.ps1` are thin wrappers: `install.ps1` runs `rokit install` then `lune run install`, and `check.ps1` runs `lune run check`. Keep logic in the Lune scripts, not the wrappers.
+- `default.project.json` is the game. `test.project.json` is the same tree plus `DevPackages` (test-only packages) and `tests/` as `ReplicatedStorage.Tests`; type checking, the editor and the offline tools use it. Never `rojo serve` or build `test.project.json`: it would put test code in the place.
 - Connect the Rojo plugin in Studio to `localhost:34873`. Once the game has a place, add `"servePlaceIds": [<placeId>]` to `default.project.json`.
 - In Studio, enable **Game Settings > Security > Enable Studio Access to API Services** (the place must be published). Without it (or in an unpublished place), Scribe saves to an in-memory store: everything works, but data resets when Play stops, and output shows `[ProfileStore]: Roblox API services unavailable - data will not be saved`. Live servers always have DataStore access.
 - In Play, output shows `[Game Boilerplate] Server services ready`, `Client controllers ready` and a Packet round trip. Both Bootstraps set a `Ready` attribute.
@@ -60,6 +61,7 @@ rojo serve default.project.json --address 127.0.0.1
 | `src/client` | `StarterPlayer.StarterPlayerScripts` | `Bootstrap.client.luau`, `Registry.luau`, `Controllers/`, `Components/` |
 | `src/shared` | `ReplicatedStorage` | `Lifecycle`, `Packet/`, `Packets`, `PlayerData/`, `Assets` (generated), `Config/`, `Utils/` |
 | `Packages` | `ReplicatedStorage.Packages` | Generated Wally dependencies |
+| `tests`, `DevPackages` | `ReplicatedStorage.Tests`, `ReplicatedStorage.DevPackages`, in `test.project.json` only | Jest specs, ree harnesses and test-only packages; never in the game |
 
 - Edit code on disk; Rojo syncs it. Code lives directly in the service roots, with no Client/Server/Shared wrapper folders.
 - Rojo owns mapped folders. Unknown children at service roots are preserved. Workspace, lighting, GUI and other art are edited and saved in Studio, not on disk.
@@ -337,7 +339,7 @@ end
 
 ### Packages
 
-Packages are in `ReplicatedStorage.Packages`. Add new ones to `wally.toml` and run `lune run install`. There are no server-only packages; to add one, add a `[server-dependencies]` section to `wally.toml` and map `ServerPackages` to `ServerScriptService.ServerPackages` in `default.project.json`. Commit `wally.toml` and `wally.lock`.
+Packages are in `ReplicatedStorage.Packages`. Add new ones to `wally.toml` and run `lune run install`. Test-only packages (Jest) are `[dev-dependencies]` in `DevPackages`, which only `test.project.json` maps. There are no server-only packages; to add one, add a `[server-dependencies]` section to `wally.toml` and map `ServerPackages` to `ServerScriptService.ServerPackages` in `default.project.json`. Commit `wally.toml` and `wally.lock`.
 
 | Package | Use it for |
 | --- | --- |
@@ -425,7 +427,15 @@ Images, sounds, videos, animations and models that code references live as files
 
 Three offline tools run the game's own Luau and draw Roblox content without Studio: **ree** (an emulated engine), **ror** (a 3D renderer) and **rur-native** (a UI renderer), all from [Anime-Vanguards](https://github.com/Anime-Vanguards). Use them before reaching for the Studio MCP for anything they cover; keep the Studio MCP for authoring Studio UI and world content, and for what they cannot simulate (physics beyond free fall, a client and server talking to each other). They are pinned exactly: their flags and output formats change between versions, so re-run `lune run test` and the commands below after a bump. They are GPL-2.0: use them as tools, never copy their code into this repo. Write their outputs under `build/` (Git-ignored).
 
-**Tests (`lune run test`).** Runs every harness in `tests/Server` (as a Play-mode server) and `tests/Client` (as a client) through ree and fails on any `FAIL` line, any error, or a harness that never prints `@done`. Run it after changing systems, networking, player data or controllers. It takes under a second.
+**Tests (`lune run test`).** Runs every harness in `tests/Server` (as a Play-mode server) and `tests/Client` (as a client) through ree and fails on any `FAIL` line, any error, or a harness that never prints `@done`. `tests/Server/Jest.luau` is the harness that runs every Jest spec. Run it after changing systems, networking, player data or controllers. It takes under a second.
+
+**Jest specs.** Unit tests are [Jest](https://roblox.github.io/jest-roblox) specs, `tests/**/<Name>.spec.luau`, run unmodified Jest Roblox in a ree server. Write a spec for a module's behaviour (a helper, a system's child module, `Lifecycle`, `PlayerData` rules); write a harness only for whole-game boot checks. `tests/Unit` has examples.
+
+- Start with `local JestGlobals = require(ReplicatedStorage.DevPackages.JestGlobals)` and take `describe`, `it`, `expect` and `jest` from it. Require the module under test normally; each spec file gets fresh copies of the modules it requires.
+- All spec files share one ree run: one `Players` service and one in-memory DataStore. Give each spec's players unique names and remove them at the end.
+- `toThrow` sees the innermost error. For code that catches and rethrows with its own message (`Lifecycle`'s `[System.Phase]`), assert with `pcall` and check the message, as `Lifecycle.spec` does.
+- `print` inside a test is captured by Jest. Warnings code under test emits (Scribe's anomalies, the known emulator gaps) appear in the run's output and are expected.
+- ree has no `debug.loadmodule` or `loadstring`, which Jest needs, and lacks a Studio service Jest probes. `tests/Server/Jest.luau` shims both; if a ree or Jest upgrade breaks specs, start there. The shim rewrites `export type` to `type` while loading modules, which is safe because nothing exports types at runtime.
 
 - A harness is a module returning `function(context: any)`. It prints `PASS <label>` / `FAIL <label>` for each check and `@done` at the end; copy the `check` helper from `tests/Server/Boot.luau`.
 - ree does not run Scripts, so a harness starts the systems itself, as the Bootstraps do: `Lifecycle.new(require(...Registry))` then `:Start()`, and `:Destroy()` at the end.

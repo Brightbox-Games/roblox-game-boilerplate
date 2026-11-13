@@ -17,3 +17,7 @@ TableUtil = "sleitnick/table-util@1.2.1"
 Trove = "sleitnick/trove@1.8.0"
 WaitFor = "sleitnick/wait-for@1.0.0"
 
+
+[dev-dependencies]
+Jest = "roblox/jest@=3.21.0"
+JestGlobals = "roblox/jest-globals@=3.21.0"
