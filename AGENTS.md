@@ -344,9 +344,10 @@ Packages are in `ReplicatedStorage.Packages`. Add new ones to `wally.toml` and r
 | `Input` | Client input: `Input.Keyboard.new()`, `Input.Mouse.new()`, `Input.Gamepad.new()`, `Input.Touch.new()`, and `Input.PreferredInput.observe(callback)` to adapt UI to the current device. Create them in a controller's `Start` and `Destroy` them in `Destroy`. |
 | `WaitFor` | Waiting for authored instances with a timeout, such as `WaitFor.Child(parent, "Name", 15)`. It returns an untyped Promise: cast it to `any` before chaining (`(WaitFor.Child(parent, "Name", 15) :: any):andThen(...)`), use `:andThen`/`:catch`, and on failure `warn` with the full path and leave that feature disabled rather than hanging. |
 | `TableUtil` | Table helpers (`Copy`, `Sync`, `Reconcile`, `Map`, `Filter`, `Keys`, `Values`, ...). Use it instead of rewriting common helpers. |
+| `Conch`, `ConchUi` | The in-game admin console; see Admin console. |
 | `Scribe` | Saved, typed, replicated player data and developer products, configured only in `src/shared/PlayerData`; see Player data. Pinned exactly (`=2.7.0`): read its changelog before upgrading. It bundles its own ProfileStore. |
 
-Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor. Do not add packages that duplicate these, Packet or Scribe (no Comm, Net, TypedRemote, ProfileStore, Replica, ReplicaService, Janitor or Knit) without the user's agreement.
+Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor. Do not add packages that duplicate these, Packet or Scribe (no Comm, Net, TypedRemote, ProfileStore, Replica, ReplicaService, Cmdr, Janitor or Knit) without the user's agreement.
 
 ### Networking
 
@@ -384,3 +385,14 @@ Scribe owns `MarketplaceService.ProcessReceipt` once any product is declared. No
 - `Products.luau` is in `src/shared`, so clients can read it. Product IDs are public anyway, but never put secrets or server-only logic in a grant.
 - Prompt purchases by name from the client with `PlayerData.Client.PromptPurchase("Name")`; never grant from a client request.
 - Game passes go in a `Passes` table in the Scribe options (`VIP = { Id = passId }`). Check ownership on the server with `PlayerData.Server.OwnsAsync(player, "VIP")`.
+
+### Admin console
+
+[Conch](https://alicesaidhi.github.io/conch/) is the admin console. `AdminService` starts it on the server and gives admins the `super-user` role; `AdminController` starts it on the client and binds **F4** for admins only. It is a package UI built in code, so the "build UI in Studio" rule does not apply to it.
+
+- **Who is an admin:** `src/shared/Config/AdminConfig.luau` lists admin `UserIds`; with `AdminsInStudio`, everyone in a Studio session (Play, Team Test) is an admin. `Utils/IsAdmin` is the one check for both sides. The server's role check is what protects commands; the client check only decides whether F4 opens the console.
+- **Adding a server command:** register it in `AdminService.Start` with `Conch.register(name, { permissions = { "permission-name" }, arguments = ..., callback = ... })`, or in an `AdminService/Commands.luau` child once there are several. Client-only commands go in `AdminController.Start`.
+- **Every server command must list at least one permission.** Conch lets anyone run a command with an empty `permissions` list. `super-user` holds every permission.
+- **Validate arguments in the callback.** Conch passes the arguments the client sent straight to the callback without checking their types, so check them (`typeof`, ranges, that a player is still in the game) as you would for a Packet handler.
+- Never add a command that grants roles or edits `AdminConfig` at runtime. Change admins in `AdminConfig` and redeploy.
+- Commands that change player data use `PlayerData.Get(player)` like any other server code.
