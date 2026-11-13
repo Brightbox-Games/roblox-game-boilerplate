@@ -2,6 +2,7 @@
 /ServerPackages/
 /DevPackages/
 /build/
+/*.test.rogen.json
 /sourcemap.json
 /globalTypes.d.luau
 *.rbxl

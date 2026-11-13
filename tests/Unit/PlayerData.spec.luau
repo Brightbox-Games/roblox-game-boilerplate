@@ -3,7 +3,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local JestGlobals = require(ReplicatedStorage.DevPackages.JestGlobals)
-local PlayerData = require(ReplicatedStorage.PlayerData)
+local PlayerData = require(ReplicatedStorage.Core.Data.PlayerData)
 
 local describe, it, expect = JestGlobals.describe, JestGlobals.it, JestGlobals.expect
 

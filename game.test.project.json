@@ -1,0 +1,133 @@
+{
+  "name": "Game Boilerplate (tests)",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Base": {
+        "$path": {
+          "optional": "src/common/Base/Shared"
+        }
+      },
+      "Core": {
+        "$className": "Folder",
+        "Access": {
+          "$path": {
+            "optional": "src/common/Core/Access/Shared"
+          }
+        },
+        "Data": {
+          "$path": {
+            "optional": "src/common/Core/Data/Shared"
+          }
+        },
+        "Net": {
+          "$path": {
+            "optional": "src/common/Core/Net/Shared"
+          }
+        },
+        "$ignoreUnknownInstances": false
+      },
+      "DevPackages": {
+        "$path": "DevPackages"
+      },
+      "Features": {
+        "$className": "Folder",
+        "Game": {
+          "$path": {
+            "optional": "src/common/Features/Game/Shared"
+          }
+        },
+        "$ignoreUnknownInstances": false
+      },
+      "Packages": {
+        "$path": "Packages"
+      },
+      "Platform": {
+        "$path": {
+          "optional": "src/common/Platform/Shared"
+        }
+      },
+      "Tests": {
+        "$path": "tests"
+      },
+      "$ignoreUnknownInstances": true
+    },
+    "ServerScriptService": {
+      "App": {
+        "$path": {
+          "optional": "src/common/App/Server"
+        }
+      },
+      "Core": {
+        "$className": "Folder",
+        "Data": {
+          "$path": {
+            "optional": "src/common/Core/Data/Server"
+          }
+        },
+        "$ignoreUnknownInstances": false
+      },
+      "Features": {
+        "$className": "Folder",
+        "Admin": {
+          "$path": {
+            "optional": "src/common/Features/Admin/Server"
+          }
+        },
+        "Game": {
+          "$path": {
+            "optional": "src/common/Features/Game/Server"
+          }
+        },
+        "$ignoreUnknownInstances": false
+      },
+      "Platform": {
+        "$path": {
+          "optional": "src/common/Platform/Server"
+        }
+      },
+      "$ignoreUnknownInstances": true
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "App": {
+          "$path": {
+            "optional": "src/common/App/Client"
+          }
+        },
+        "Features": {
+          "$className": "Folder",
+          "Admin": {
+            "$path": {
+              "optional": "src/common/Features/Admin/Client"
+            }
+          },
+          "Components": {
+            "$path": {
+              "optional": "src/common/Features/Components/Client"
+            }
+          },
+          "Debug": {
+            "$path": {
+              "optional": "src/common/Features/Debug/Client"
+            }
+          },
+          "Game": {
+            "$path": {
+              "optional": "src/common/Features/Game/Client"
+            }
+          },
+          "UI": {
+            "$path": {
+              "optional": "src/common/Features/UI/Client"
+            }
+          },
+          "$ignoreUnknownInstances": false
+        },
+        "$ignoreUnknownInstances": true
+      },
+      "$ignoreUnknownInstances": true
+    },
+    "$ignoreUnknownInstances": true
+  }
+}

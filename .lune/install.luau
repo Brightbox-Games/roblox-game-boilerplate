@@ -3,6 +3,7 @@
 local fs = require("@lune/fs")
 local net = require("@lune/net")
 local process = require("@lune/process")
+local project = require("./Project")
 local run = require("./Run")
 
 local globalTypesUrl =
@@ -23,7 +24,7 @@ if not fs.isFile("globalTypes.d.luau") then
 end
 
 run("wally", { "install" })
-run("rojo", { "sourcemap", "test.project.json", "--output", "sourcemap.json" })
+project.Sync()
 run("wally-package-types", { "--sourcemap", "sourcemap.json", "Packages/" })
 if fs.isDir("DevPackages") then
 	run("wally-package-types", { "--sourcemap", "sourcemap.json", "DevPackages/" })

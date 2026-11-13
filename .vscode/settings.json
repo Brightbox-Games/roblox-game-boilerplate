@@ -1,11 +1,11 @@
 {
   "luau-lsp.sourcemap.enabled": true,
-  "luau-lsp.sourcemap.rojoProjectFile": "test.project.json",
+  "luau-lsp.sourcemap.rojoProjectFile": "game.test.project.json",
   "luau-lsp.ignoreGlobs": [
     "Packages/**",
     "DevPackages/**",
     "build/**",
-    "src/shared/Packet/**"
+    "src/**/Platform/Shared/Packet/**"
   ],
   "luau-lsp.fflags.enableNewSolver": true,
   "[luau]": {

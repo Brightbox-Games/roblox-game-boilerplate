@@ -4,6 +4,7 @@ local fs = require("@lune/fs")
 local process = require("@lune/process")
 local serde = require("@lune/serde")
 local mounts = require("./Mounts")
+local project = require("./Project")
 
 type Line = { kind: string, message: string }
 
@@ -18,9 +19,9 @@ local function isKnownGap(output: { Line }, index: number): boolean
 	return string.find(message, "conch-ui.src.components.ui.executor:257", 1, true) ~= nil
 end
 
-local function runHarness(path: string, context: string): boolean
+local function runHarness(place: string, path: string, context: string): boolean
 	local args = { "run", "--harness", path, "--run-context", context, "--seconds", "30" }
-	for _, arg in mounts() do
+	for _, arg in mounts(place) do
 		table.insert(args, arg)
 	end
 	local result = process.exec("ree", args)
@@ -32,7 +33,7 @@ local function runHarness(path: string, context: string): boolean
 	end
 	local ok, report = pcall(serde.decode, "json" :: "json", reportLine or "")
 	if not ok or type(report) ~= "table" then
-		print(`FAIL {path}: ree printed no report\n{result.stdout}{result.stderr}`)
+		print(`FAIL {place} {path}: ree printed no report\n{result.stdout}{result.stderr}`)
 		return false
 	end
 	local passed = report.status == "ok"
@@ -53,7 +54,7 @@ local function runHarness(path: string, context: string): boolean
 		passed = false
 		print(`  {path} did not reach @done (status {report.status})`)
 	end
-	print(`{if passed then "PASS" else "FAIL"} {path}`)
+	print(`{if passed then "PASS" else "FAIL"} {place} {path}`)
 	return passed
 end
 
@@ -62,15 +63,21 @@ if not fs.isDir("tests") then
 	process.exit(1)
 end
 
+project.Sync()
+
 local failures = 0
-for folder, context in contexts do
-	local directory = `tests/{folder}`
-	if fs.isDir(directory) then
-		local names = fs.readDir(directory)
-		table.sort(names)
-		for _, name in names do
-			if string.sub(name, -5) == ".luau" and not runHarness(`{directory}/{name}`, context) then
-				failures += 1
+for _, place in project.Places() do
+	for folder, context in contexts do
+		local directory = `tests/{folder}`
+		if fs.isDir(directory) then
+			local names = fs.readDir(directory)
+			table.sort(names)
+			for _, name in names do
+				if
+					string.sub(name, -5) == ".luau" and not runHarness(place, `{directory}/{name}`, context)
+				then
+					failures += 1
+				end
 			end
 		end
 	end

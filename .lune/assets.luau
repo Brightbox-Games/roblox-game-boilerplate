@@ -2,6 +2,7 @@
 
 local fs = require("@lune/fs")
 local process = require("@lune/process")
+local project = require("./Project")
 local run = require("./Run")
 
 if not fs.isFile("asphalt.toml") then
@@ -15,3 +16,5 @@ if string.match(fs.readFile("asphalt.toml"), "\nid%s*=%s*0%s*\n") then
 end
 
 run("asphalt", { "sync", table.unpack(process.args) })
+project.Write()
+run("rogen", { "write", "--quiet" })

@@ -5,7 +5,7 @@
 - Do not add comments to code. Luau directives such as `--!strict` are allowed.
 - Keep `--!strict` at the top of every Luau file. Run `lune run check` before handing off code changes.
 - The project uses Luau's new type solver: `luau-lsp.fflags.enableNewSolver` in `.vscode/settings.json`, which `lune run check` also reads. In Studio, set **Workspace > UseNewLuauTypeSolver** to `Enabled` so Script Analysis matches.
-- Format with StyLua (tabs, 110 columns, double quotes). Never edit generated `Packages/`, `build/` or `sourcemap.json`.
+- Format with StyLua (tabs, 110 columns, double quotes). Never edit generated `Packages/`, `build/`, `sourcemap.json`, `*.test.rogen.json` or `*.project.json`.
 
 ### Naming
 
@@ -34,46 +34,102 @@
 
 ## Setup and checks
 
-Tools are pinned in `rokit.toml`: Rojo, Wally, StyLua, wally-package-types, luau-lsp, Lune, Asphalt, and the offline engine tools ree, ror and rur-native (see Testing, profiling and previews). The only prerequisite is [Rokit](https://github.com/rojo-rbx/rokit). Project scripts are Lune scripts in `.lune/`, run from the project root.
+Tools are pinned in `rokit.toml`: Rojo, Rogen (writes the Rojo project files), Wally, StyLua, wally-package-types, luau-lsp, Lute (the require lint), Lune, Asphalt, and the offline engine tools ree, ror and rur-native (see Testing, profiling and previews). The only prerequisite is [Rokit](https://github.com/rojo-rbx/rokit). Project scripts are Lune scripts in `.lune/`, run from the project root.
 
 ```sh
 rokit install
 lune run install
-rojo serve default.project.json --address 127.0.0.1
+lune run dev
 ```
 
 - `rokit install` installs the pinned tools. On first run it asks the user to trust each new tool author; that prompt needs a real terminal, so ask the user to run it rather than bypassing it.
 - `lune run install` downloads the Roblox type definitions (`globalTypes.d.luau`, Git-ignored) if missing, runs `wally install`, then `wally-package-types` on `Packages` and `DevPackages` so package types (such as `Signal.Signal<T...>`) are visible to strict code. Run it on a fresh clone and after changing `wally.toml`; never run bare `wally install`.
 - On Windows, `./scripts/install.ps1` and `./scripts/check.ps1` are thin wrappers: `install.ps1` runs `rokit install` then `lune run install`, and `check.ps1` runs `lune run check`. Keep logic in the Lune scripts, not the wrappers.
-- `default.project.json` is the game. `test.project.json` is the same tree plus `DevPackages` (test-only packages) and `tests/` as `ReplicatedStorage.Tests`; type checking, the editor and the offline tools use it. Never `rojo serve` or build `test.project.json`: it would put test code in the place.
-- Connect the Rojo plugin in Studio to `localhost:34873`. Once the game has a place, add `"servePlaceIds": [<placeId>]` to `default.project.json`.
+- `lune run dev [place]` (default `game`) writes the project files and sourcemap, then runs `rogen sourcemap <place>.test --watch` (keeps the place's test project and `sourcemap.json` current for the editor) and `rogen serve <place>` (rewrites the place's project file as folders appear) together.
+- Each place has a config, `<place>.rogen.json`; the first place is `game` (see Places). `<place>.project.json` is the place. `<place>.test.project.json` is the same tree plus `DevPackages` (test-only packages) and `tests/` as `ReplicatedStorage.Tests`; type checking, the offline tools and, for `game`, the editor use it. Never serve or build a test project: it would put test code in the place.
+- Connect the Rojo plugin in Studio to `localhost:34873`. Once the game has a place, add `"servePlaceIds": [<placeId>]` to `game.rogen.json`.
 - In Studio, enable **Game Settings > Security > Enable Studio Access to API Services** (the place must be published). Without it (or in an unpublished place), Scribe saves to an in-memory store: everything works, but data resets when Play stops, and output shows `[ProfileStore]: Roblox API services unavailable - data will not be saved`. Live servers always have DataStore access.
 - In Play, output shows `[Game Boilerplate] Server services ready`, `Client controllers ready` and a Packet round trip. Both Bootstraps set a `Ready` attribute.
-- `lune run check` is the one command to run after every change. It formats `src`, `.lune` and `tests` with StyLua, regenerates the sourcemap, runs luau-lsp type and lint analysis, and does a Rojo build. Fix every error it reports and rerun it until it passes.
+- `lune run check` is the one command to run after every change. It formats `src`, `.lune` and `tests` with StyLua, rejects empty folders in `src`, writes the project files and runs `rogen check` (any routing warning fails), then for every place regenerates the sourcemap, runs luau-lsp type and lint analysis and the `require_boundaries` lint (see Require boundaries) on that place's files, and does a Rojo build of `<place>.project.json` into `build/<place>.rbxlx`. `lune run check --frozen` checks formatting and project files without writing them, for CI. Fix every error it reports and rerun it until it passes.
 - `rojo build` output is code-only, not a replacement for the authored place.
-- **Starting a new game from this boilerplate:** set `GameConfig.Name`, set `[creator] id` in `asphalt.toml` to the game's Roblox group ID, put the game's admins in `Config/AdminConfig.luau`, and add `servePlaceIds` once the place exists.
+- **Starting a new game from this boilerplate:** set `Name` in `src/common/Features/Game/Shared/GameConfig.luau`, set `name` in `game.rogen.json`, set `[creator] id` in `asphalt.toml` to the game's Roblox group ID, put the game's admins in `src/common/Core/Access/Shared/AdminConfig.luau`, and add `servePlaceIds` once the place exists.
 
 ## Layout
 
-| Files | Studio destination | Contents |
-| --- | --- | --- |
-| `src/server` | `ServerScriptService` | `Bootstrap.server.luau`, `Registry.luau`, `Services/`, `Components/` (create when needed) |
-| `src/client` | `StarterPlayer.StarterPlayerScripts` | `Bootstrap.client.luau`, `Registry.luau`, `Controllers/`, `Components/` |
-| `src/shared` | `ReplicatedStorage` | `Lifecycle`, `Packet/`, `Packets`, `PlayerData/`, `Assets` (generated), `Config/`, `Utils/` |
-| `Packages` | `ReplicatedStorage.Packages` | Generated Wally dependencies |
-| `tests`, `DevPackages` | `ReplicatedStorage.Tests`, `ReplicatedStorage.DevPackages`, in `test.project.json` only | Jest specs, ree harnesses and test-only packages; never in the game |
+Code is grouped by layer, then by feature. Shared code is in `src/common`; each place (see Places) adds `src/<place>`. Rogen routes each file by its folder names (see Rogen).
 
-- Edit code on disk; Rojo syncs it. Code lives directly in the service roots, with no Client/Server/Shared wrapper folders.
+| Layer | Holds | May require |
+| --- | --- | --- |
+| `Base` | Pure Luau with no Roblox or game knowledge: `Lifecycle`, `RateLimit` | Nothing outside itself |
+| `Platform` | Roblox-aware, game-agnostic modules: `Packet/`, server `EditorOnly` | `Base` |
+| `Core` | Features the others build on: `Data` (`DataService`, `PlayerData` with `Products`), `Access` (`IsAdmin`, `AdminConfig`), `Net` (`Packets`), `Assets` (generated) | `Base`, `Platform` |
+| `Features` | Game features: `Admin`, `Components` (game-agnostic components such as `Spinner`), `Debug`, `Game` (`GameService`, `AppController`, `GameConfig`), `UI` | `Base`, `Platform`, `Core` |
+| `App` | The composition roots: `Bootstrap`, `Registry` and the component loader (`ComponentService`, `ComponentController`) on each side | Anything |
+
+Every layer may also require `Packages`. In `Features`, a module requires only its own feature, so features never require each other. In `Base`, `Platform` and `Core`, a module may also require other features of its own layer (a Core feature can build on `Data`); keep those dependencies one-way, since Luau errors on a require cycle.
+
+| Files | Studio destination |
+| --- | --- |
+| `src/common/<Layer>/<Feature>/Server/` | `ServerScriptService.<Layer>.<Feature>` |
+| `src/common/<Layer>/<Feature>/Client/` | `StarterPlayer.StarterPlayerScripts.<Layer>.<Feature>` |
+| `src/common/<Layer>/<Feature>/Shared/` | `ReplicatedStorage.<Layer>.<Feature>` (visible to clients) |
+| `src/common/<Layer>/<Side>/<Module>` (`Base`, `Platform`, `App`, `Core/Shared/Assets.luau`) | `<Service>.<Layer>.<Module>` |
+| `src/<place>/...` | The same paths, in that place only |
+| `Packages` | `ReplicatedStorage.Packages` (generated Wally dependencies) |
+| `tests`, `DevPackages` | `ReplicatedStorage.Tests`, `ReplicatedStorage.DevPackages`, in test projects only; never in the game |
+
+So `src/common/Core/Data/Server/DataService.luau` is `ServerScriptService.Core.Data.DataService`, `src/common/Base/Shared/Lifecycle.luau` is `ReplicatedStorage.Base.Lifecycle`, and `src/common/App/Server/Registry.luau` is `ServerScriptService.App.Registry`.
+
+- Edit code on disk; Rojo syncs it. A routing folder leaves no folder in the game. A feature has only the sides it needs.
 - Rojo owns mapped folders. Unknown children at service roots are preserved. Workspace, lighting, GUI and other art are edited and saved in Studio, not on disk.
 - Tag authoring-only content in Workspace (prefab libraries, reference models, anything the game reads from a copy elsewhere) `EditorOnly`. `Bootstrap.server.luau` moves tagged instances into `ServerStorage.EditorOnly` before any system starts, so they stay editable in Studio but are never replicated to players. Never tag something code reads from Workspace.
-- Server-only code (secrets, rules, data) belongs in `src/server`. Everything in `src/shared` is visible to clients.
-- Put tunable constants in `src/shared/Config` as frozen tables, or in server modules if clients must not see them.
+- Server-only code (secrets, rules, data) belongs in a `Server` folder. Everything in a `Shared` folder is visible to clients.
+- Put tunable constants in a frozen table in the feature's `Shared` folder, named after the feature (`src/common/Features/Game/Shared/GameConfig.luau`), or in its `Server` folder if clients must not see them.
 - Put pure logic in plain modules (such as a system's `Catalog.luau`) with no service dependencies.
-- Keep `src/shared` tidy: its root holds only the framework (`Lifecycle`, `Packet`, `Packets`, `PlayerData`), the generated `Assets`, and folders. Reusable, game-agnostic helpers used by more than one system go in `src/shared/Utils` (such as `Utils/RateLimit`), one module per helper. Server-only helpers go in `src/server/Utils`. Helpers used by a single system stay inside that system's folder.
+- New game code goes in a feature in `Features`. Move a feature down to `Core` only when other features must build on it; player data stays in `Core/Data` in `src/common` so every place shares one store. Reusable, game-agnostic helpers go in `Base/Shared` if they need nothing from Roblox, or `Platform/Shared` (`Platform/Server` if server-only) if they do, one module per helper. Helpers used by a single feature stay in that feature.
+
+### Requires
+
+- Require by instance path: `require(ReplicatedStorage.Core.Access.IsAdmin)`, `require(ReplicatedStorage.Core.Data.PlayerData)`, `require(script.Parent.AdminConfig)` within a folder. `rogen where <file>` prints the require that reaches a file.
+- Client code under `StarterPlayerScripts` is cloned into each player, so it reaches its own side through `script` (`require(script.Parent.Parent.Features.Admin.AdminController)` in the client `Registry`), never through `StarterPlayer`. `rogen where` prints no require for these files for the same reason.
+- Follow the layer table: lower layers never require higher ones, features never require each other, and modules reach other systems through the registry (see Using other systems). `Shared` code never requires `Server` or `Client` code, and client code never requires server code. Only `App` requires every layer. `lune run check` enforces all of this (see Require boundaries), and luau-lsp fails on a require that no longer matches the tree.
+
+## Rogen
+
+[Rogen](https://rogen-roblox.vercel.app/docs/v2) writes the Rojo project files from folder names, so a file's path on disk is not its path in the game.
+
+- `<place>.rogen.json` is the only project config you edit. Its `routes` send `Server/` folders to `ServerScriptService`, `Client/` to `StarterPlayer/StarterPlayerScripts` and `Shared/` to `ReplicatedStorage`. Its `sourcePaths` are `src/common` then `src/<place>`. Its `tree` holds what names cannot place, such as `Packages`. Put `servePlaceIds` and other Rojo keys there.
+- There is no `*` fallback route: a file outside a routing folder is left out of the game, so server code that forgets its route never reaches clients, and `lune run check` fails on it.
+- A feature is a folder in a layer with a routing folder for each side it runs on: `src/common/Features/Shop/Server/ShopService.luau` is `ServerScriptService.Features.Shop.ShopService`. Rogen's other naming forms (`@Server` suffixes, marker files, `^` and `(...)` names) are not used here.
+- `rogen where <file>` prints where a file lands, and the require that reaches it, in each place that reads it; `rogen where <place>.rogen.json` lists every file of a place, and `rogen where game ServerScriptService.Core.Data.DataService:18` maps an error line from Studio back to the file. In a worktree nested inside another checkout (such as `.claude/worktrees/`), Rogen finds the outer checkout's project file first, so name the config there.
+- Run `lune run check` after adding, moving, renaming or deleting files. It rewrites the project files, and `rogen check` fails on any routing warning. A new file inside an existing feature side folder needs nothing else; a new feature, a new side folder, a new file in a layer's own `Shared`/`Server`/`Client` folder or an override in a place changes the project files. Delete folders you empty: Rogen maps an empty folder, Git does not keep it, so `lune run check` fails on one.
+- Each place's `<place>.project.json` and `<place>.test.project.json` are generated and committed, so plain Rojo still works without Rogen. `.lune/Project.luau` generates `<place>.test.rogen.json` (Git-ignored) from each place's config; never edit it or a project file. `lune run check --frozen`, for CI, fails when a committed project file is out of date.
+- Client code reaches its own side through `script.Parent`, never through `StarterPlayer` (see Requires).
+
+## Places
+
+Every `<place>.rogen.json` except the generated `*.test.rogen.json` is a place, a separate Roblox place of the same game. `game` is the first. Each place reads `src/common`, then its own `src/<place>`; a file in `src/<place>` replaces the `src/common` file at the same path, so a place overrides a module (or a whole `Registry.luau`, to add place-only systems) by copying it to the same path in its folder. Place-only features go in `src/<place>/Features/<Feature>/`. A place with no files of its own keeps a `.gitkeep`, as `src/game` does, so its source path exists.
+
+`lune run check` and `lune run test` cover every place. `lune run dev <place>` serves one. `lune run ree` and `lune run rur` mount the place named by the `PLACE` environment variable, `game` by default: `PLACE=lobby lune run ree run --harness tests/Server/Boot.luau --run-context server`.
+
+**Adding a place:**
+
+1. Copy `game.rogen.json` to `<place>.rogen.json`, set `name`, a free `servePort` (the game uses `34873`) and `"sourcePaths": ["src/common", "src/<place>"]`.
+2. Create `src/<place>` with the place's own files, or a `.gitkeep`.
+3. Run `lune run check` and `lune run test`, and commit the config and both generated project files.
+
+## Require boundaries
+
+`lune run check` runs [Lute](https://lute.luau.org)'s `require_boundaries` rule (`lints/require_boundaries.luau`, configured in `.config.luau`) on each place's files. It reads the sourcemap, follows each instance-path `require`, and fails on shared code that requires a side, client code that requires server code, a lower layer that requires a higher one, a module that requires another feature of its own layer, and a require of an instance no file provides.
+
+- `layers` lists the layers from lowest to highest: `Base`, `Platform`, `Core`, `Features`, `App`. The highest layer may require any layer and feature; side rules still apply to it. Instances outside the layers, such as `Packages`, may be required from anywhere.
+- A crossed boundary means the code is in the wrong place: move it down a layer, or reach the other system through the registry. Ask the user before changing `layers`.
+- The rule sees only requires it can resolve statically (`script`, `game:GetService`, `.Name`, and `WaitForChild`/`FindFirstChild` with a string).
+- The rule is our fork of Rogen's: it adds the `layers` option. Rogen's MIT license is in `lints/LICENSE`; port upstream fixes by hand.
 
 ## Systems
 
-A system is a service (server) or controller (client): a ModuleScript table run by `src/shared/Lifecycle.luau`.
+A system is a service (server) or controller (client): a ModuleScript table run by `ReplicatedStorage.Base.Lifecycle`. It lives in its feature's `Server` or `Client` folder.
 
 - **Services** own state, validation and game rules. Never trust the client: validate every request on the server.
 - **Controllers** own input, camera, UI and presentation. They request changes from services; they never decide outcomes.
@@ -92,8 +148,8 @@ Do not make a system for:
 
 - part of an existing feature: add a child module to that system instead (see below),
 - behaviour attached to tagged instances: use a component,
-- constants: use `src/shared/Config`,
-- stateless helpers: use a plain module next to the code that uses it, or in `src/shared/Utils` if several systems need it.
+- constants: use the feature's config module (see Layout),
+- stateless helpers: use a plain module next to the code that uses it, or in `Base` or `Platform` if several features need it.
 
 If a system's methods start being about two unrelated things, or other systems keep reaching into its data, split it into two systems.
 
@@ -102,12 +158,12 @@ If a system's methods start being about two unrelated things, or other systems k
 Keep each system's concerns in separate files. Once a system has more than one concern (or its file passes about 300 lines), turn it into a folder. Rojo maps a folder containing `init.luau` to a single ModuleScript with the other files as its children, so the registry `require` does not change.
 
 ```text
-src/server/Services/ShopService/
+src/common/Features/Shop/Server/ShopService/
 	init.luau
 	Catalog.luau
 	Purchasing.luau
 	Types.luau
-src/client/Controllers/CameraController/
+src/common/Features/Camera/Client/CameraController/
 	init.luau
 	Modes.luau
 	Smoothing.luau
@@ -127,7 +183,7 @@ src/client/Controllers/CameraController/
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local PlayerData = require(ReplicatedStorage.PlayerData)
+local PlayerData = require(ReplicatedStorage.Core.Data.PlayerData)
 local Catalog = require(script.Parent.Catalog)
 local Types = require(script.Parent.Types)
 
@@ -150,7 +206,7 @@ return Purchasing
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Packets = require(ReplicatedStorage.Packets)
+local Packets = require(ReplicatedStorage.Core.Net.Packets)
 local Purchasing = require(script.Purchasing)
 local Types = require(script.Types)
 
@@ -176,7 +232,7 @@ return ShopService
 
 ### UI
 
-`UIController` (`src/client/Controllers/UIController`) owns every screen. It ships with no screens; its `modules` table is empty.
+`UIController` (`src/common/Features/UI/Client/UIController`, the `UI` feature) owns every screen, whichever feature it belongs to. It ships with no screens; its `modules` table is empty.
 
 **Build UI in Studio, not in code.** Prefer ScreenGuis authored in StarterGui, with code finding and driving them. Only create UI in code (`Instance.new`, React or similar) if the user says they prefer that.
 
@@ -185,7 +241,7 @@ return ShopService
 - UI in StarterGui is saved in the place file, not on disk; Rojo does not sync it. Remind the user to save the place after UI changes.
 
 ```text
-src/client/Controllers/UIController/
+src/common/Features/UI/Client/UIController/
 	init.luau
 	Types.luau
 	Screens/
@@ -206,7 +262,7 @@ src/client/Controllers/UIController/
   - The screen object has `Modal`, `StartsOpen`, `Open`, `Close` and `Destroy`.
   - Non-modal screens (HUD, notifications) can be open together. Opening a modal screen (shop, settings) closes other modals.
   - Screens may hold state because they are created objects. They own their connections through a Trove and clean them up in `Destroy`.
-- **What screens receive:** `context.Controllers` (the controller registry), `context.Open` and `context.Close`. Screens never require each other; open another screen through `context.Open`.
+- **What screens receive:** `context.Controllers` (the controller registry), `context.Open` and `context.Close`. Screens never require each other; open another screen through `context.Open`. Screens are part of the `UI` feature, so they reach other features through `context.Controllers`, and `Core` (such as `PlayerData`) directly, never by requiring another feature's modules.
 - **What screens may do:** send requests through `Packets` and display player data through `PlayerData.Client` (see Player data). They never decide outcomes.
 - **Finding elements:** look up authored elements by name inside `gui` and check their class (`IsA`) before use, so a renamed element fails visibly rather than erroring.
 - **Complex client logic** such as a placement preview goes in its own controller, which the screen calls through `context.Controllers`.
@@ -215,7 +271,7 @@ src/client/Controllers/UIController/
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local PlayerData = require(ReplicatedStorage.PlayerData)
+local PlayerData = require(ReplicatedStorage.Core.Data.PlayerData)
 local Trove = require(ReplicatedStorage.Packages.Trove)
 local Types = require(script.Parent.Parent.Types)
 
@@ -254,16 +310,16 @@ return Hud
 
 ### Adding a system
 
-1. Create `src/server/Services/NameService.luau` or `src/client/Controllers/NameController.luau`.
+1. Create `src/common/Features/<Feature>/Server/NameService.luau` or `src/common/Features/<Feature>/Client/NameController.luau`, in an existing feature or a new feature folder (`src/<place>/Features/...` for a place-only system).
 2. Return a plain table with a unique `Name` matching the file name, and optional `Init`, `Start` and `Destroy`. Do not annotate it as `Lifecycle.System`: that type is read-only, so defining methods on an annotated table fails. The registry's `{ Lifecycle.System }` list checks the shape.
-3. Add a `require` to that side's `Registry.luau`, after every system it depends on.
+3. Add a `require` to that side's registry, after every system it depends on: `require(ServerScriptService.Features.<Feature>.NameService)` in `src/common/App/Server/Registry.luau`, `require(script.Parent.Parent.Features.<Feature>.NameController)` in `src/common/App/Client/Registry.luau`. A place-only system goes in the place's copy of the registry (see Places).
 
 ```lua
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local PlayerData = require(ReplicatedStorage.PlayerData)
-local Packets = require(ReplicatedStorage.Packets)
+local PlayerData = require(ReplicatedStorage.Core.Data.PlayerData)
+local Packets = require(ReplicatedStorage.Core.Net.Packets)
 
 local ExampleService = { Name = "ExampleService" }
 local services: { [string]: any } = {}
@@ -289,7 +345,7 @@ end
 return ExampleService
 ```
 
-The matching packet in `Packets.luau` would be `GetCash = Packet("GetCash"):Response(Packet.NumberF64):RateLimit(5, 1)`, and a controller calls it with `local cash = Packets.GetCash:Fire()`.
+The matching packet in `Core/Net/Shared/Packets.luau` would be `GetCash = Packet("GetCash"):Response(Packet.NumberF64):RateLimit(5, 1)`, and a controller calls it with `local cash = Packets.GetCash:Fire()`.
 
 ### Lifecycle rules
 
@@ -298,7 +354,7 @@ The matching packet in `Packets.luau` would be `GetCash = Packet("GetCash"):Resp
 - `Start(self)` connects events, binds packets and begins work. Other systems are safe to call from here on.
 - Hooks must return promptly. Never yield or run permanent loops inside them; use `task.spawn` or connections instead.
 - `Destroy(self)` disconnects connections, destroys instances and cancels owned threads. It must tolerate a partially completed `Init` and being called when `Start` never ran.
-- Module loading must have no side effects: no connections, instances or yields at require time. The one exception is `ReplicatedStorage.PlayerData`: Scribe starts its player listeners (and `ProcessReceipt`, once products exist) the first time it is required, which is while the registries load.
+- Module loading must have no side effects: no connections, instances or yields at require time. The one exception is `ReplicatedStorage.Core.Data.PlayerData`: Scribe starts its player listeners (and `ProcessReceipt`, once products exist) the first time it is required, which is while the registries load.
 - Errors in `Init`/`Start` are reported as `[System.Phase]`; the lifecycle then destroys initialised systems in reverse order and stops startup. Duplicate names and repeated starts are rejected.
 - The server calls `Destroy` through `BindToClose`; the client bootstrap does so when destroyed. Both bootstraps set a `Ready` attribute once startup succeeds.
 
@@ -312,9 +368,10 @@ The matching packet in `Packets.luau` would be `GetCash = Packet("GetCash"):Resp
 
 Use a component for behaviour attached to many tagged instances (doors, pickups, hazards, spinners). Use a system for game-wide state. Components use the Component package and CollectionService tags.
 
-- Put client components in `src/client/Components` and server components in `src/server/Components`. Add the module's `require` to the `factories` list in `ComponentController` or `ComponentService`.
+- A feature's components live in a `Components` folder on its side: `src/common/Features/Shop/Client/Components/ShopSign.luau`, `src/common/Features/Shop/Server/Components/Door.luau`. Game-agnostic components live in the `Components` feature next to the loaders, as `Spinner` does.
+- Add the module's `require` to the `factories` list in `ComponentController` (`src/common/App/Client`, for example `require(script.Parent.Parent.Features.Shop.Components.ShopSign)`) or `ComponentService` (`src/common/App/Server`, for example `require(ServerScriptService.Features.Shop.Components.Door)`). The loaders are in `App` because they require every feature's components.
 - A component module returns a factory `function(registry)` that creates and returns the class. The loader calls it in `Start`, so requiring the module has no side effects, and the component can reach systems through the registry.
-- Cast the class to `any` and type `self` explicitly, because the package's inferred types do not work in strict mode. `src/client/Components/Spinner.luau` is the example: tag a part `Spinner` and optionally set a `SpinSpeed` attribute (degrees per second).
+- Cast the class to `any` and type `self` explicitly, because the package's inferred types do not work in strict mode. `src/common/Features/Components/Client/Spinner.luau` is the example: tag a part `Spinner` and optionally set a `SpinSpeed` attribute (degrees per second).
 - Use `Construct` for setup, `Start` for connections, `Stop` for cleanup, and `HeartbeatUpdate`/`RenderSteppedUpdate` for per-frame work. Components start only under `workspace` and `Players` unless `Ancestors` is given.
 - Server components own authoritative behaviour; client components are presentation only. Destroying the class stops tag tracking but does not stop already running instances, so it is suitable only at shutdown.
 
@@ -339,7 +396,7 @@ end
 
 ### Packages
 
-Packages are in `ReplicatedStorage.Packages`. Add new ones to `wally.toml` and run `lune run install`. Test-only packages (Jest) are `[dev-dependencies]` in `DevPackages`, which only `test.project.json` maps. There are no server-only packages; to add one, add a `[server-dependencies]` section to `wally.toml` and map `ServerPackages` to `ServerScriptService.ServerPackages` in `default.project.json`. Commit `wally.toml` and `wally.lock`.
+Packages are in `ReplicatedStorage.Packages`. Add new ones to `wally.toml` and run `lune run install`. Test-only packages (Jest) are `[dev-dependencies]` in `DevPackages`, which only the test projects map. There are no server-only packages; to add one, add a `[server-dependencies]` section to `wally.toml`, and mount `ServerPackages` at `ServerScriptService.ServerPackages` in the `tree` of every place's config. Commit `wally.toml` and `wally.lock`.
 
 | Package | Use it for |
 | --- | --- |
@@ -351,13 +408,13 @@ Packages are in `ReplicatedStorage.Packages`. Add new ones to `wally.toml` and r
 | `TableUtil` | Table helpers (`Copy`, `Sync`, `Reconcile`, `Map`, `Filter`, `Keys`, `Values`, ...). Use it instead of rewriting common helpers. |
 | `Conch`, `ConchUi` | The in-game admin console; see Admin console. |
 | `Iris` | Immediate-mode debug UI, admins and Studio only; see Debug UI. |
-| `Scribe` | Saved, typed, replicated player data and developer products, configured only in `src/shared/PlayerData`; see Player data. Pinned exactly (`=2.7.0`): read its changelog before upgrading. It bundles its own ProfileStore. |
+| `Scribe` | Saved, typed, replicated player data and developer products, configured only in `src/common/Core/Data/Shared/PlayerData`; see Player data. Pinned exactly (`=2.7.0`): read its changelog before upgrading. It bundles its own ProfileStore. |
 
 Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor. Do not add packages that duplicate these, Packet or Scribe (no Comm, Net, TypedRemote, ProfileStore, Replica, ReplicaService, Cmdr, Janitor or Knit) without the user's agreement.
 
 ### Networking
 
-- Define every Packet channel in `src/shared/Packets.luau`. The server errors if a packet is defined after the first frame.
+- Define every Packet channel in `src/common/Core/Net/Shared/Packets.luau` (`ReplicatedStorage.Core.Net.Packets`); a place adds its own channels by overriding that file. The server errors if a packet is defined after the first frame.
 - `Packet(name, ...types)` declares an event; `:Response(...types)` makes it a request with a 10-second default timeout. Raise `ResponseTimeout` for anything that waits on a save.
 - Services bind `OnServerEvent`/`OnServerInvoke` in `Start` and clear them in `Destroy`. Validate the sender, every argument and range on the server.
 - Rate limit every packet the client can send by chaining `:RateLimit(count, window)`, allowing `count` calls per `window` seconds per player: `Buy = Packet("Buy", Packet.String):Response(Packet.Boolean8):RateLimit(5, 1)`. The server drops excess calls before they reach handlers (warning in Studio). A dropped request gets no reply, so the client's `Fire` returns `ResponseTimeoutValue` after `ResponseTimeout`; debounce buttons on the client so normal use never hits the limit.
@@ -367,14 +424,14 @@ Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor.
 - The server reads at most 8,000 bytes per player per heartbeat, counting every client batch as at least 800. A batch over the limit is dropped whole (warning in Studio), so keep client-to-server payloads small. An array from a client is rejected if it claims more elements than its message has bytes and Instances.
 - Number arguments from a client can be NaN or infinite, and `Static` arguments can be `nil`. Check them before use.
 - Never use `Packet.Any` in a packet clients can send. It accepts tables nested thousands deep with arbitrary keys, which a handler that walks or saves the value cannot safely handle. Declare a typed shape instead.
-- `src/shared/Packet` is our fork of Suphi Kaner's Packet 1.7 with local security fixes: per-packet rate limits, rejecting unbuffered client messages, binding each awaited response to its packet, checking Instance and EnumItem arguments, bounding arrays by the size of their message, erroring on over-long values instead of corrupting the stream, and keeping sends alive when one fails. It always sends buffers: the upstream unbuffered mode (`Settings.UseBuffers`) has been removed. Do not replace it with an upstream or Wally copy; port upstream fixes by hand.
-- For limits that are not per packet (per action, per target, shared across packets), use `Utils/RateLimit` directly: `local limiter = RateLimit.new(3, 10)`, then `limiter:Allow(player)`. Call `limiter:Remove(player)` when the player leaves.
+- `src/common/Platform/Shared/Packet` (`ReplicatedStorage.Platform.Packet`) is our fork of Suphi Kaner's Packet 1.7 with local security fixes: per-packet rate limits, rejecting unbuffered client messages, binding each awaited response to its packet, checking Instance and EnumItem arguments, bounding arrays by the size of their message, erroring on over-long values instead of corrupting the stream, and keeping sends alive when one fails. It always sends buffers: the upstream unbuffered mode (`Settings.UseBuffers`) has been removed. Do not replace it with an upstream or Wally copy; port upstream fixes by hand.
+- For limits that are not per packet (per action, per target, shared across packets), use `ReplicatedStorage.Base.RateLimit` directly: `local limiter = RateLimit.new(3, 10)`, then `limiter:Allow(player)`. Call `limiter:Remove(player)` when the player leaves.
 - Packet is for actions and Scribe is for player data. Clients send requests and receive events through Packet; the server's player data reaches clients through Scribe (see Player data). Do not add packets that mirror player data.
 - Prefer Packet over RemoteEvents and RemoteFunctions. Use attributes only for simple values that belong to an instance, such as a plot's owner or the Bootstraps' `Ready`.
 
 ### Player data
 
-Player data is saved, typed and replicated by [Scribe](https://ericplane.github.io/Scribe/), configured in `src/shared/PlayerData/init.luau`. Read its docs before using a feature not described here.
+Player data is saved, typed and replicated by [Scribe](https://ericplane.github.io/Scribe/), configured in `src/common/Core/Data/Shared/PlayerData/init.luau`. It stays in `src/common`, so every place uses one store. Read its docs before using a feature not described here.
 
 - **Template:** `Template` in `PlayerData/init.luau` declares every field. Use declarators for rules: `Cash = Scribe.Int(0, { Min = 0 })`. Out-of-range writes are clamped, so check balances before spending: `Increment(-price)` on too little cash clamps to 0 instead of failing. Wrap fields that must not reach the client in `Scribe.ServerOnly(...)`, fields every client should see in `Scribe.Shared(...)`, and runtime-only state in `Scribe.Session(...)`.
 - **Server reads and writes:** `PlayerData.Get(player)` returns the typed data, or `nil` while the player is loading or leaving. Check for nil in every handler and never keep the data across a yield. Read with `data.Cash.Get()` and write with `Set`, `Increment` and the other accessor methods; every write is validated, saved and sent to the owner. `PlayerData.Server.Get(player)` errors unless the player is loaded, so use it only inside `PlayerLoaded` handlers.
@@ -389,17 +446,17 @@ Player data is saved, typed and replicated by [Scribe](https://ericplane.github.
 
 Scribe owns `MarketplaceService.ProcessReceipt` once any product is declared. Nothing else may set it; Roblox allows only one handler.
 
-- **Adding a developer product:** add `Name = { Id = productId, Grant = function(data, player) ... end }` to `src/shared/PlayerData/Products.luau`. Scribe grants it, records the receipt in the player's profile, and confirms the purchase to Roblox only after a save contains both, so a crash cannot grant twice or lose a paid reward.
+- **Adding a developer product:** add `Name = { Id = productId, Grant = function(data, player) ... end }` to `src/common/Core/Data/Shared/PlayerData/Products.luau`. Scribe grants it, records the receipt in the player's profile, and confirms the purchase to Roblox only after a save contains both, so a crash cannot grant twice or lose a paid reward.
 - **Grants change only the player's data**, such as `data.Cash.Increment(500)`. They must not yield, prompt or touch anything outside the profile; rewards outside the profile (server-wide effects, tools in the Backpack) are not protected against retries, so ask the user before adding them.
-- `Products.luau` is in `src/shared`, so clients can read it. Product IDs are public anyway, but never put secrets or server-only logic in a grant.
+- `Products.luau` is in a `Shared` folder, so clients can read it. Product IDs are public anyway, but never put secrets or server-only logic in a grant.
 - Prompt purchases by name from the client with `PlayerData.Client.PromptPurchase("Name")`; never grant from a client request.
 - Game passes go in a `Passes` table in the Scribe options (`VIP = { Id = passId }`). Check ownership on the server with `PlayerData.Server.OwnsAsync(player, "VIP")`.
 
 ### Admin console
 
-[Conch](https://alicesaidhi.github.io/conch/) is the admin console. `AdminService` starts it on the server and gives admins the `super-user` role; `AdminController` starts it on the client and binds **F4** for admins only. It is a package UI built in code, so the "build UI in Studio" rule does not apply to it.
+[Conch](https://alicesaidhi.github.io/conch/) is the admin console, in the `Admin` feature. `AdminService` starts it on the server and gives admins the `super-user` role; `AdminController` starts it on the client and binds **F4** for admins only. It is a package UI built in code, so the "build UI in Studio" rule does not apply to it.
 
-- **Who is an admin:** `src/shared/Config/AdminConfig.luau` lists admin `UserIds`; with `AdminsInStudio`, everyone in a Studio session (Play, Team Test) is an admin. `Utils/IsAdmin` is the one check for both sides. The server's role check is what protects commands; the client check only decides whether F4 opens the console.
+- **Who is an admin:** `src/common/Core/Access/Shared/AdminConfig.luau` lists admin `UserIds`; with `AdminsInStudio`, everyone in a Studio session (Play, Team Test) is an admin. `ReplicatedStorage.Core.Access.IsAdmin` is the one check for both sides. The server's role check is what protects commands; the client check only decides whether F4 opens the console.
 - **Adding a server command:** register it in `AdminService.Start` with `Conch.register(name, { permissions = { "permission-name" }, arguments = ..., callback = ... })`, or in an `AdminService/Commands.luau` child once there are several. Client-only commands go in `AdminController.Start`.
 - **Every server command must list at least one permission.** Conch lets anyone run a command with an empty `permissions` list. `super-user` holds every permission.
 - **Validate arguments in the callback.** Conch passes the arguments the client sent straight to the callback without checking their types, so check them (`typeof`, ranges, that a player is still in the game) as you would for a Packet handler.
@@ -408,7 +465,7 @@ Scribe owns `MarketplaceService.ProcessReceipt` once any product is declared. No
 
 ### Debug UI
 
-`DebugController` runs [Iris](https://sirmallard.github.io/Iris/) for admins only (`Utils/IsAdmin`, so everyone in Studio). Other players never create any Iris UI. **F3** toggles a Debug window with FPS, the player's `Cash`, and a checkbox for Iris's demo window, which shows every available widget.
+`DebugController` (`src/common/Features/Debug/Client`) runs [Iris](https://sirmallard.github.io/Iris/) for admins only (`ReplicatedStorage.Core.Access.IsAdmin`, so everyone in Studio). Other players never create any Iris UI. **F3** toggles a Debug window with FPS, the player's `Cash`, and a checkbox for Iris's demo window, which shows every available widget.
 
 - Add debug panels inside the `Iris:Connect` callback in `DebugController`, or in a `DebugController/Panels.luau` child once there are several. Like the admin console, Iris builds UI in code; the "build UI in Studio" rule does not apply to it.
 - Debug panels only show and tweak values. Anything that changes server state goes through a Conch command or a Packet request that the server validates, never straight from an Iris button.
@@ -418,8 +475,8 @@ Scribe owns `MarketplaceService.ProcessReceipt` once any product is declared. No
 
 Images, sounds, videos, animations and models that code references live as files in `assets/` and are uploaded with [Asphalt](https://github.com/jackTabsCode/asphalt). Art placed in the world is still built and saved in Studio.
 
-- **Syncing:** `lune run assets` uploads new or changed files under the group in `asphalt.toml` and regenerates `src/shared/Assets.luau`. It refuses to run while `[creator] id` is the `0` placeholder. Uploads need an Open Cloud API key with `asset:read` and `asset:write`, created under that group, in the `ASPHALT_API_KEY` environment variable. Never put the key in a file in the repo. `lune run assets debug` processes files locally without uploading.
-- **Using an asset:** `require(ReplicatedStorage.Assets)` gives a typed table that mirrors `assets/` without file extensions: `assets/Images/Logo.png` is `Assets.Images.Logo`, an `rbxassetid://` string. Never hard-code asset IDs in code.
+- **Syncing:** `lune run assets` uploads new or changed files under the group in `asphalt.toml` and regenerates `src/common/Core/Shared/Assets.luau` (`ReplicatedStorage.Core.Assets`, in `Core` so every feature may require it), then rewrites the project files. It refuses to run while `[creator] id` is the `0` placeholder. Uploads need an Open Cloud API key with `asset:read` and `asset:write`, created under that group, in the `ASPHALT_API_KEY` environment variable. Never put the key in a file in the repo. `lune run assets debug` processes files locally without uploading.
+- **Using an asset:** `require(ReplicatedStorage.Core.Assets)` gives a typed table that mirrors `assets/` without file extensions: `assets/Images/Logo.png` is `Assets.Images.Logo`, an `rbxassetid://` string. Never hard-code asset IDs in code.
 - **Already on Roblox:** add existing assets to `[inputs.Assets.web]` in `asphalt.toml` (`"Images/Logo.png" = { id = 123 }`) so they appear in `Assets` without uploading.
 - Commit `assets/`, `asphalt.lock.toml` and the generated `Assets.luau` so others can build without an API key. Never edit `Assets.luau` by hand; StyLua skips it.
 
@@ -427,7 +484,7 @@ Images, sounds, videos, animations and models that code references live as files
 
 Three offline tools run the game's own Luau and draw Roblox content without Studio: **ree** (an emulated engine), **ror** (a 3D renderer) and **rur-native** (a UI renderer), all from [Anime-Vanguards](https://github.com/Anime-Vanguards). Use them before reaching for the Studio MCP for anything they cover; keep the Studio MCP for authoring Studio UI and world content, and for what they cannot simulate (physics beyond free fall, a client and server talking to each other). They are pinned exactly: their flags and output formats change between versions, so re-run `lune run test` and the commands below after a bump. They are GPL-2.0: use them as tools, never copy their code into this repo. Write their outputs under `build/` (Git-ignored).
 
-**Tests (`lune run test`).** Runs every harness in `tests/Server` (as a Play-mode server) and `tests/Client` (as a client) through ree and fails on any `FAIL` line, any error, or a harness that never prints `@done`. `tests/Server/Jest.luau` is the harness that runs every Jest spec. Run it after changing systems, networking, player data or controllers. It takes under a second.
+**Tests (`lune run test`).** Runs every harness in `tests/Server` (as a Play-mode server) and `tests/Client` (as a client) through ree and fails on any `FAIL` line, any error, or a harness that never prints `@done`. It runs them once per place, each against that place's `<place>.test.project.json`. `tests/Server/Jest.luau` is the harness that runs every Jest spec. Run it after changing systems, networking, player data or controllers. It takes under a second.
 
 **Jest specs.** Unit tests are [Jest](https://roblox.github.io/jest-roblox) specs, `tests/**/<Name>.spec.luau`, run unmodified Jest Roblox in a ree server. Write a spec for a module's behaviour (a helper, a system's child module, `Lifecycle`, `PlayerData` rules); write a harness only for whole-game boot checks. `tests/Unit` has examples.
 
@@ -444,8 +501,28 @@ Three offline tools run the game's own Luau and draw Roblox content without Stud
 - Known emulator gaps the runner allows, and nothing else: Scribe's `SUBSYSTEM_HOOK_ERROR` naming `HasRobloxSubscription` (ree's Player lacks it), and Conch UI's `executor:257` layout error. Add a gap to `isKnownGap` in `.lune/test.luau` only after confirming it is the emulator, not our code.
 - A `Start` that yields shows up here as a client or server that stalls: keep waits in `task.spawn`, as `AdminController` does.
 
-**Ad-hoc runs and profiling.** `lune run ree run --harness <file> --run-context server --seconds 30` (or `client`) runs one harness, ending early at `@done`, with the project mounted from `default.project.json` and prints a JSON report of every output line. Add `--profile all --profile-out build/profile/<name>` to profile it, then read `ree profile report build/profile/<name>` (work per frame priced as a Roblox client pays it, top functions, allocations). Compare two profiles with `ree profile diff <before> <after>`.
+**Ad-hoc runs and profiling.** `lune run ree run --harness <file> --run-context server --seconds 30` (or `client`) runs one harness, ending early at `@done`, with the place's test project mounted (`PLACE`, default `game`; see Places), and prints a JSON report of every output line. Add `--profile all --profile-out build/profile/<name>` to profile it, then read `ree profile report build/profile/<name>` (work per frame priced as a Roblox client pays it, top functions, allocations). Compare two profiles with `ree profile diff <before> <after>`.
 
-**3D previews (ror).** Record a harness that builds what you want to see, then render it: `lune run ree record --harness <file> --out build/ree/<name> --seconds 0.2`, then `ror render build/ree/<name>/scene.rbxm --out build/ror/<name> --views iso` (also `front`, `top`, `turntable:8`). `ror render` also takes `.rbxm`/`.rbxl` files directly, `ror inspect` describes a render as text, and `ror cost` reports draw calls and triangles. `ror render --studio` exports from an open Studio session; it has not been verified in this repo.
+**Performance work starts with a ree profile.** Before optimizing anything, write or reuse a harness that exercises the code (`tests/Server/Boot.luau` boots every service), profile it with `lune run ree run --harness <file> --run-context server --seconds 30 --profile all --profile-out build/profile/before` (or `--run-context client`), and read `ree profile report build/profile/before` to find the functions and lines that actually cost time. After the change, profile again into `build/profile/after` and compare with `ree profile diff build/profile/before build/profile/after`. Report the before and after numbers with the change. Do not optimize code the profile does not show as costly. Use Studio's MicroProfiler through the Studio MCP only for what ree does not simulate: physics, rendering and real network replication.
 
-**UI previews (rur-native).** `rur-native render --module <file.luau> --dir build/rur/<name>` renders a module that returns a ScreenGui or other UI instance; `--model <file.rbxm>` renders a saved UI tree. Read `render.png`, and `scene.json` for every element's laid-out rectangle and text. Use it to check UI built in code (Conch, Iris panels) or exported from Studio; it does not see StarterGui in the place file.
+**3D previews (ror).** Record a harness that builds what you want to see, then render it: `lune run ree record --harness <file> --out build/ree/<name> --seconds 0.2`, then `ror render build/ree/<name>/scene.rbxm --out build/ror/<name> --views iso` (also `front`, `top`, `turntable:8`). `ror render` also takes `.rbxm`/`.rbxl` files directly.
+
+**UI previews (rur-native).** `lune run rur render --module <file.luau> --dir build/rur/<name>` renders UI built by a module, with the project mounted as for `lune run ree`. Return the top Frame unparented; a module that returns a ScreenGui renders nothing, without a warning. For UI that needs a player, return `function(_target)` that parents the ScreenGui to `Players.LocalPlayer.PlayerGui` and add `--mode play --all-layers true`. `--model <file.rbxm>` renders a saved UI tree. Read `render.png`, and `scene.json` for every element's laid-out rectangle and text; output and errors from the module are in `scene.json` `diagnostics`. It does not see StarterGui in the place file.
+
+**Use instead of the Studio MCP.** Reach for these before starting Play or running code in Studio. Each takes about a second or less unless noted. Write throwaway harnesses and variant files under `build/`; the `context.*` helpers are fields of the harness's argument.
+
+- **Live-server branches:** add `--studio false` to `lune run ree run` and `RunService:IsStudio()` is false, as on a live server. Use it for code behind `IsStudio()`: `Core/Access/IsAdmin` and `AdminsInStudio`, the `PlayerData` / `PlayerData_Studio` store choice, Packet's Studio-only warnings. `tests/Client/Boot.luau` fails its admin check with it, as expected.
+- **Leaks:** `local take = context.Census()` before the scenario, then `print(take())` after it, prints JSON of live threads (where made, where suspended, what resumes them), connections by the line that connected them, pending timers, and live instances by class and top-level parent. Take it twice; what only grows is the leak. Trees outside the DataModel show as `(nil) <Class> <Name>`.
+- **What keeps something alive:** `print(context.Holders({ "Player Leaver" }))` explains orphaned roots whose "Class Name" starts with a filter: another instance's property, queued work, an engine pin, or the shortest Luau path from a module, handler, thread or the registry. Scribe's log ring keeps players named in its warnings until newer entries replace them; that is bounded, not a leak.
+- **Who wrote a property:** after `local drain = context.TraceWrites({ "CFrame", "Text" }, 3)`, `drain()` returns every Parent write and every write of the listed properties since the last call, each with `Kind`, `Instance`, `Property`, `Old`, `New` and `Stack` (`Chunk:line`, innermost first). `"*"` watches every property and attribute.
+- **Devices:** `--device touch|gamepad|phone` changes what `UserInputService` reports in a client run. `phone` is touch and prices profiled work at 2.77x desktop: use it to check a frame budget against a phone, not to rank code.
+- **Randomness:** runs are deterministic. To try another outcome, pass `--context '{"Seed":7}'` and call `context.SetRandomSeed(context.Seed)` (math.random and later `Random.new()`) and `context.ReseedRandoms(context.Seed)` (Randoms already made).
+- **Compare implementations:** `lune run ree profile try build/whatif/<Name>.luau --out build/whatif/<Name> --variants a,b` runs each variant at each size in a fresh engine and writes `compare.txt` (work, instructions, allocations and heap per call, and the winner) and `compare.json`; it exits 1 if the variants return different results. The file returns `{ sizes = { ... }, setup = function(n) ... end, variants = { { name = "a", run = function(data) ... end }, ... }, check = true }`. To compare a rewrite of a project module, use `module = "ReplicatedStorage/Base/RateLimit"` and `versions = { before = "<path>", after = "<path>" }` (paths relative to the file) with `setup(n, Module)` and `run(data, Module)`. The first variant is the baseline, and a dictionary runs in name order, so always pass `--variants`. It takes about 4 s; `--no-time` keeps the exact figures and takes about 0.4 s.
+- **Draw cost:** `ror cost build/ree/<name>/scene.rbxm --out build/ror/<name>-cost --views iso --fov 70` prints draw calls and triangles per pass for each view, what culling hides and the biggest savings, and writes `cost.json`, `<view>.draws.png` and `<view>.heat.png`. After a change, run it into a new `--out` with `--camera-from build/ror/<name>-cost --compare build/ror/<name>-cost`.
+- **What a render shows:** render with `--ids`, then `ror inspect build/ror/<name>` lists each view's parts by share of the image, and `--view iso --at x,y` names the part at a pixel. Read this before opening the PNG.
+- **Visual regression:** render the second scene with `--ids --camera-from build/ror/<before>`, then `ror diff build/ror/<before> build/ror/<after>` reports the share of changed pixels, their region and the parts that gained or lost pixels, and writes `<after>/diff/<view>.diff.png` (`--json` for JSON).
+- **Motion over time:** `ror video build/ree/<name>/scene.rbxm --playback build/ree/<name>/playback.json --duration 2 --size 960x540 --out build/ror/<name>-video` writes `sheet.png` (moments labelled with time and particle count; read this first), `video.mp4` and `summary.json`. Use it for tweens, spinners and particles. mp4 needs ffmpeg on PATH; otherwise pass `--format apng`.
+- **Phone layout:** `lune run rur render --module <file> --dir build/rur/<name>-phone --viewport 844x390 --scale 1 --device touch`. Check numbers in `scene.json`, not only the PNG: `nodes[].rect` is `[x, y, w, h]` in logical pixels, `props.text` is the text, and a `text.lines[].width` larger than its node's width means overflow.
+- **Clicks and keys:** `--actions '[{"t":0.6,"type":"click","node":"Panel.Buy"}]'` clicks a node by path suffix (or `x`/`y`); `key`, `text`, `wheel` and `drag` also work. Set `--time` after the last action. Prints from handlers land in `scene.json` `diagnostics.output`.
+- **Animations:** `lune run rur sequence --module <file> --dir build/rur/<name>-seq --mode play --from 0 --to 0.5 --fps 30` writes `frames/00000.png`…, `trace.json` (per node, `[frame, x, y, w, h, rotation]` rows when they change), `video.mp4` and `video-quarter.mp4`. Check a tween's endpoints and overshoot in `trace.json`.
+- **Not usable from the release binaries:** rur `inspect`, `diff` and `compare` (a rur source checkout); `ror render <file.luau>` (a ree source checkout); `ror render --studio` (a Studio MCP bridge, not just an open Studio); ror drawing BillboardGui and SurfaceGui (a rur checkout); `ree profile view` and `ree profile render` (use `rur-native profile render <profile dir> --view issues --out -` for profile views).

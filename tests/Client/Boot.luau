@@ -34,7 +34,7 @@ local function remotes(name: string, remoteNames: { string })
 end
 
 return function(context: any)
-	context.StandIn(ReplicatedStorage.Packets, packetsStandIn)
+	context.StandIn(ReplicatedStorage.Core.Net.Packets, packetsStandIn)
 	remotes("ScribeTransport", { "Down", "Up" })
 	remotes("conch_networking", {
 		"invoke_server_command",
@@ -47,9 +47,9 @@ return function(context: any)
 		"ready",
 	})
 
-	require(ReplicatedStorage.PlayerData)
-	local Lifecycle = require(ReplicatedStorage.Lifecycle)
-	local controllers = require(StarterPlayer.StarterPlayerScripts.Registry)
+	require(ReplicatedStorage.Core.Data.PlayerData)
+	local Lifecycle = require(ReplicatedStorage.Base.Lifecycle)
+	local controllers = require(StarterPlayer.StarterPlayerScripts.App.Registry)
 	local runtime = Lifecycle.new(controllers)
 
 	check("client lifecycle starts", pcall(runtime.Start, runtime))

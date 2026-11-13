@@ -2,7 +2,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local JestGlobals = require(ReplicatedStorage.DevPackages.JestGlobals)
-local Lifecycle = require(ReplicatedStorage.Lifecycle)
+local Lifecycle = require(ReplicatedStorage.Base.Lifecycle)
 
 local describe, it, expect, jest = JestGlobals.describe, JestGlobals.it, JestGlobals.expect, JestGlobals.jest
 

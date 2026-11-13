@@ -17,11 +17,11 @@ local function waitUntil(condition: () -> boolean, timeout: number): boolean
 end
 
 return function(_context: any)
-	require(ServerScriptService.Utils.EditorOnly).Strip()
-	local Lifecycle = require(ReplicatedStorage.Lifecycle)
-	local PlayerData = require(ReplicatedStorage.PlayerData)
-	local Packets = require(ReplicatedStorage.Packets)
-	local services = require(ServerScriptService.Registry)
+	require(ServerScriptService.Platform.EditorOnly).Strip()
+	local Lifecycle = require(ReplicatedStorage.Base.Lifecycle)
+	local PlayerData = require(ReplicatedStorage.Core.Data.PlayerData)
+	local Packets = require(ReplicatedStorage.Core.Net.Packets)
+	local services = require(ServerScriptService.App.Registry)
 	local runtime = Lifecycle.new(services)
 
 	check("server lifecycle starts", pcall(runtime.Start, runtime))
