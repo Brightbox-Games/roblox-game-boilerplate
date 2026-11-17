@@ -89,6 +89,15 @@
           },
           "$ignoreUnknownInstances": false
         },
+        "Sync": {
+          "$className": "Folder",
+          "SyncService": {
+            "$path": {
+              "optional": "src/common/Core/Sync/SyncService@Server.luau"
+            }
+          },
+          "$ignoreUnknownInstances": false
+        },
         "$ignoreUnknownInstances": false
       },
       "Features": {
@@ -142,6 +151,19 @@
             "$path": {
               "optional": "src/common/App/Registry@Client.luau"
             }
+          },
+          "$ignoreUnknownInstances": false
+        },
+        "Core": {
+          "$className": "Folder",
+          "Sync": {
+            "$className": "Folder",
+            "SyncController": {
+              "$path": {
+                "optional": "src/common/Core/Sync/SyncController@Client.luau"
+              }
+            },
+            "$ignoreUnknownInstances": false
           },
           "$ignoreUnknownInstances": false
         },

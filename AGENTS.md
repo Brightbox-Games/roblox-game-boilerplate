@@ -63,7 +63,7 @@ Code is grouped by layer, then by feature. Shared code is in `src/common`; each 
 | --- | --- | --- |
 | `Base` | Pure Luau with no Roblox or game knowledge: `Lifecycle`, `RateLimit` | Nothing outside itself |
 | `Platform` | Roblox-aware, game-agnostic modules: `Packet`, server `EditorOnly` | `Base` |
-| `Core` | Features the others build on: `Data` (`DataService`, `PlayerData` with `Products`), `Access` (`IsAdmin`, `AdminConfig`), `Packets`, `Assets` (generated) | `Base`, `Platform` |
+| `Core` | Features the others build on: `Data` (`DataService`, `PlayerData` with `Products`), `Sync` (`SyncService`, `SyncController`), `Access` (`IsAdmin`, `AdminConfig`), `Packets`, `Assets` (generated) | `Base`, `Platform` |
 | `Features` | Game features: `Admin`, `Components` (game-agnostic components such as `Spinner`), `Debug`, `Game` (`GameService`, `AppController`, `GameConfig`), `UI` | `Base`, `Platform`, `Core` |
 | `App` | The composition roots: `Bootstrap`, `Registry` and the component loader (`ComponentService`, `ComponentController`) on each side | Anything |
 
@@ -238,39 +238,37 @@ return ShopService
 
 ### UI
 
-`UIController` (`src/common/Features/UI/UIController@Client`, the `UI` feature) owns every screen, whichever feature it belongs to. It ships with no screens; its `modules` table is empty.
+`UIController` (`src/common/Features/UI/UIController@Client`, the `UI` feature) owns every screen, whichever feature it belongs to. Screens are [Vide](https://centau.github.io/vide/) components built in code; it ships one example, `Hud`.
 
-**Build UI in Studio, not in code.** Prefer ScreenGuis authored in StarterGui, with code finding and driving them. Only create UI in code (`Instance.new`, React or similar) if the user says they prefer that.
-
-- Use the Studio MCP ([robloxstudio-mcp](https://github.com/Chrrxs/robloxstudio-mcp)) to create and edit UI in StarterGui: inspect the existing tree, create ScreenGuis and elements with `execute_luau`, adjust them with `set_properties`, and check the result with `capture_screenshot`.
-- If the Studio MCP is not connected, do not fall back to building UI in code. Tell the user to set it up (`claude mcp add robloxstudio -- npx -y @chrrxs/robloxstudio-mcp@3.4.3 --auto-install-plugin`, then restart Studio until its plugin shows **Connected**), and continue with the code side (the screen module) meanwhile.
-- UI in StarterGui is saved in the place file, not on disk; Rojo does not sync it. Remind the user to save the place after UI changes.
+**Build UI in code with Vide, not in Studio.** Do not author ScreenGuis in StarterGui. Check layout with rur (see Testing, profiling and previews), not the Studio MCP.
 
 ```text
 src/common/Features/UI/UIController@Client/
 	init.luau
 	Types.luau
+	ScribeVide.luau
 	Screens/
 		<Name>.luau
 ```
 
-- **Adding a screen:**
-  1. Create a ScreenGui in StarterGui named after the screen.
-  2. Add `Screens/<Name>.luau` using the template below.
-  3. Add `<Name> = require(script.Screens.<Name>)` to the `modules` table in `init.luau`.
+- **Adding a screen:** add `Screens/<Name>.luau` using the template below, and `<Name> = require(script.Screens.<Name>)` to the `modules` table in `init.luau`.
 - **What `init.luau` does:**
-  - Waits up to 15 seconds for each ScreenGui with `WaitFor`. If one is missing, it warns with the expected path and disables only that screen.
-  - Sets `ResetOnSpawn = false` so screens survive respawns.
-  - Creates each screen, tracks which are open, closes other modals when a modal opens, and destroys everything in `Destroy`.
-- **API for other systems:** `UIController:Open(name)`, `UIController:Close(name)` and `UIController:IsOpen(name)`.
-- **Screen contract** (`Types.luau`):
-  - A screen module returns `{ new = function(context, gui): Screen }`.
-  - The screen object has `Modal`, `StartsOpen`, `Open`, `Close` and `Destroy`.
+  - Creates a ScreenGui per screen, named after it, under PlayerGui (`ResetOnSpawn = false`, `ZIndexBehavior = Sibling`, the screen's `DisplayOrder`), mounts the screen's `Render` into it with `Vide.mount`, and binds `Enabled` to the screen's open state.
+  - Keeps each screen's open state in a Charm signal, closes other modals when a modal opens, and unmounts and destroys everything in `Destroy`. A screen whose `Render` errors is disabled with a warning; the others still mount.
+  - Creates a [TopbarPlus](https://1foreverhd.github.io/TopbarPlus/) icon for a screen with `Topbar`. The icon opens and closes the screen, and follows it when something else opens or closes it.
+- **API for other systems:** `UIController:Open(name)`, `UIController:Close(name)`, `UIController:IsOpen(name)`, and `UIController:OpenState(name)`, a Charm getter for use in effects.
+- **Screen contract** (`Types.luau`): a screen module returns a table with `Modal`, `StartsOpen`, optional `DisplayOrder`, optional `Topbar = { Label?, Image?, Order? }`, and `Render(context): Instance`.
+  - `Render` runs once, inside the screen's Vide root, and returns the content (usually one Frame) that goes in the ScreenGui. Do not return a ScreenGui.
+  - Vide reruns only what reads a source: pass a function for a property that changes (`Text = function() return `Cash: {cash()}` end`), a plain value for one that does not.
+  - Release anything that is not a Vide instance with `Vide.cleanup(function() stop() end)`; Trove is not used in screens.
   - Non-modal screens (HUD, notifications) can be open together. Opening a modal screen (shop, settings) closes other modals.
-  - Screens may hold state because they are created objects. They own their connections through a Trove and clean them up in `Destroy`.
 - **What screens receive:** `context.Controllers` (the controller registry), `context.Open` and `context.Close`. Screens never require each other; open another screen through `context.Open`. Screens are part of the `UI` feature, so they reach other features through `context.Controllers`, and `Core` (such as `PlayerData`) directly, never by requiring another feature's modules.
-- **What screens may do:** send requests through `Packets` and display player data through `PlayerData.Client` (see Player data). They never decide outcomes.
-- **Finding elements:** look up authored elements by name inside `gui` and check their class (`IsA`) before use, so a renamed element fails visibly rather than erroring.
+- **Reading state** (see State):
+  - Player data: `local cash, stop = useScribe(PlayerData.Client.Cash)` with `local useScribe = require(script.Parent.Parent.ScribeVide)(Vide)`, then `Vide.cleanup(function() stop() end)`. `ScribeVide.luau` is Scribe's official adapter; copy it again from Scribe's `addons/ui` when upgrading Scribe.
+  - Charm signals another system exposes: `VideCharm.useSignalState(getter)` returns a Vide source.
+  - State only the screen uses: `Vide.source(initial)`.
+- **What screens may do:** send requests through `Packets` and display state. They never decide outcomes.
+- **Vide types:** `Vide.create` is typed only for common classes (Frame, TextLabel, TextButton, ImageLabel, ScrollingFrame, UICorner, UIListLayout, UIGridLayout, UIGradient, ScreenGui, ...). For others (`UIPadding`, `UIStroke`, `UIScale`, `UIFlexItem`), use `local createAny = Vide.create :: any`, as `Hud` does.
 - **Complex client logic** such as a placement preview goes in its own controller, which the screen calls through `context.Controllers`.
 
 ```lua
@@ -278,41 +276,71 @@ src/common/Features/UI/UIController@Client/
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlayerData = require(ReplicatedStorage.Core.Data.PlayerData)
-local Trove = require(ReplicatedStorage.Packages.Trove)
+local Vide = require(ReplicatedStorage.Packages.Vide)
+local ScribeVide = require(script.Parent.Parent.ScribeVide)
 local Types = require(script.Parent.Parent.Types)
 
-local Hud = {}
+local create = Vide.create
+local useScribe = ScribeVide(Vide)
 
-function Hud.new(_context: Types.Context, gui: ScreenGui): Types.Screen
-	local trove = Trove.new()
+local Shop: Types.Screen = {
+	Modal = true,
+	StartsOpen = false,
+	Topbar = { Label = "Shop", Order = 1 },
+	Render = function(context: Types.Context): Instance
+		local cash, stopCash = useScribe(PlayerData.Client.Cash)
+		Vide.cleanup(function()
+			stopCash()
+		end)
 
-	local stopCash = PlayerData.Client.Cash.Observe(function(cash: number)
-		local label = gui:FindFirstChild("Cash", true)
-		if label and label:IsA("TextLabel") then
-			label.Text = string.format("%d", cash)
-		end
-	end)
-	trove:Add(function()
-		stopCash()
-	end)
+		return create("Frame")({
+			Name = "Shop",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(400, 300),
+			create("TextLabel")({
+				Size = UDim2.new(1, 0, 0, 32),
+				Text = function()
+					return `Cash: {cash()}`
+				end,
+			}),
+			create("TextButton")({
+				Position = UDim2.new(1, -32, 0, 0),
+				Size = UDim2.fromOffset(32, 32),
+				Text = "X",
+				Activated = function()
+					context.Close("Shop")
+				end,
+			}),
+		})
+	end,
+}
 
-	return {
-		Modal = false,
-		StartsOpen = true,
-		Open = function(_self: Types.Screen)
-			gui.Enabled = true
-		end,
-		Close = function(_self: Types.Screen)
-			gui.Enabled = false
-		end,
-		Destroy = function(_self: Types.Screen)
-			trove:Destroy()
-		end,
-	}
-end
-
-return Hud
+return Shop
 ```
+
+### State
+
+Each kind of state has one home:
+
+| State | Where | How the UI reads it |
+| --- | --- | --- |
+| Per-player, saved or replicated to its owner | Scribe (`Core/Data`, see Player data) | `ScribeVide` |
+| Global, owned by the server, every client sees it (round phase, timers, events) | A Charm signal in the owning service, synced by `Core/Sync` | `VideCharm.useSignalState` on the controller's getter |
+| Client-only, shared between systems (selected item, settings) | A Charm signal in the owning controller | `VideCharm.useSignalState` |
+| Local to one screen | `Vide.source` inside `Render` | Directly |
+
+- [Charm](https://github.com/littensy/charm): `local getRound, setRound = Charm.signal("Lobby")`; `Charm.computed(fn)` derives, `Charm.effect(fn)` reruns when signals it reads change, and `Charm.listen`/`Charm.subscribe(getter, callback)` react to one value. Each returns a stop function: add it to the system's Trove with `trove:Add(function() stop() end)`. Tables in signals are immutable: set a new table (`setState(table.clone(...))`), never mutate the current one.
+- Expose a signal's getter, never its setter, as a field of the owning system (`AppController.PlayerCount`), so only the owner changes it.
+- Do not mirror Scribe data into Charm or sync per-player data through `Core/Sync`.
+
+**Syncing global state (`Core/Sync`):** `SyncService` sends registered Charm getters to every client through [charm-sync](https://github.com/littensy/charm#client-server-sync), as delta patches over the `Sync` packet (`Packet.Any`, server to client only). Each client asks once with `SyncReady`.
+
+1. On the server, in the owning service's `Init`: `services.SyncService:Add("<Feature>.<Name>", getter)`.
+2. On the client, in the owning controller's `Init`: create a signal of the same type and `controllers.SyncController:Add("<Feature>.<Name>", setter)`. Register in `Init`, never later: the first patch arrives right after every controller's `Init`, and a patch for an unregistered key is dropped with a warning.
+3. Expose the client getter on the controller for screens and other systems.
+
+`GameService` and `AppController` do this for `Game.PlayerCount`, which `Hud` shows. Keys are `<Feature>.<Name>` and must match on both sides. A value that becomes `nil` is removed on the client (charm-sync sends it as `None`, which `patch` applies). Synced values must be plain data: no Instances or functions.
 
 ### Adding a system
 
@@ -414,6 +442,9 @@ Packages are in `ReplicatedStorage.Packages`. Add new ones to `wally.toml` and r
 | `TableUtil` | Table helpers (`Copy`, `Sync`, `Reconcile`, `Map`, `Filter`, `Keys`, `Values`, ...). Use it instead of rewriting common helpers. |
 | `Conch`, `ConchUi` | The in-game admin console; see Admin console. |
 | `Iris` | Immediate-mode debug UI, admins and Studio only; see Debug UI. |
+| `Vide` | Building UI in code; see UI. Pinned exactly (`=0.4.1`, also what Conch UI uses). |
+| `Charm`, `CharmSync`, `VideCharm` | Charm signals for shared and global state, charm-sync for syncing them (only through `Core/Sync`), and `VideCharm.useSignalState` to read a signal in Vide; see State. Pinned exactly (0.x breaks APIs between minors). |
+| `TopbarPlus` | Topbar icons. `UIController` makes them from a screen's `Topbar`; use it directly only for icons that are not screens. Untyped: require it as `:: any`. |
 | `Scribe` | Saved, typed, replicated player data and developer products, configured only in `src/common/Core/Data/PlayerData@Shared`; see Player data. Pinned exactly (`=2.7.0`): read its changelog before upgrading. It bundles its own ProfileStore. |
 
 Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor. Do not add packages that duplicate these, Packet or Scribe (no Comm, Net, TypedRemote, ProfileStore, Replica, ReplicaService, Cmdr, Janitor or Knit) without the user's agreement.
@@ -488,15 +519,16 @@ Images, sounds, videos, animations and models that code references live as files
 
 ### Testing, profiling and previews
 
-Three offline tools run the game's own Luau and draw Roblox content without Studio: **ree** (an emulated engine), **ror** (a 3D renderer) and **rur-native** (a UI renderer), all from [Anime-Vanguards](https://github.com/Anime-Vanguards). Use them before reaching for the Studio MCP for anything they cover; keep the Studio MCP for authoring Studio UI and world content, and for what they cannot simulate (physics beyond free fall, a client and server talking to each other). They are pinned exactly: their flags and output formats change between versions, so re-run `lune run test` and the commands below after a bump. They are GPL-2.0: use them as tools, never copy their code into this repo. Write their outputs under `build/` (Git-ignored).
+Three offline tools run the game's own Luau and draw Roblox content without Studio: **ree** (an emulated engine), **ror** (a 3D renderer) and **rur-native** (a UI renderer), all from [Anime-Vanguards](https://github.com/Anime-Vanguards). Use them before reaching for the Studio MCP for anything they cover; keep the Studio MCP for authoring world content, and for what they cannot simulate (physics beyond free fall, a client and server talking to each other). They are pinned exactly: their flags and output formats change between versions, so re-run `lune run test` and the commands below after a bump. They are GPL-2.0: use them as tools, never copy their code into this repo. Write their outputs under `build/` (Git-ignored).
 
 **Tests (`lune run test`).** Runs every harness in `tests/Server` (as a Play-mode server) and `tests/Client` (as a client) through ree and fails on any `FAIL` line, any error, or a harness that never prints `@done`. It runs them once per place, each against that place's `<place>.test.project.json`. `tests/Server/Jest.luau` is the harness that runs every Jest spec. Run it after changing systems, networking, player data or controllers. It takes under a second.
 
-**Jest specs.** Unit tests are [Jest](https://roblox.github.io/jest-roblox) specs, `tests/**/<Name>.spec.luau`, run unmodified Jest Roblox in a ree server. Write a spec for a module's behaviour (a helper, a system's child module, `Lifecycle`, `PlayerData` rules); write a harness only for whole-game boot checks. `tests/Unit` has examples.
+**Jest specs.** Unit tests are [Jest](https://roblox.github.io/jest-roblox) specs, `tests/**/<Name>.spec.luau`, run unmodified Jest Roblox in a ree server. Write a spec for a module's behaviour (a helper, a system's child module, `Lifecycle`, `PlayerData` rules); write a harness only for whole-game boot checks and for code that needs native requires. `tests/Unit` has examples.
 
 - Start with `local JestGlobals = require(ReplicatedStorage.DevPackages.JestGlobals)` and take `describe`, `it`, `expect` and `jest` from it. Require the module under test normally; each spec file gets fresh copies of the modules it requires.
 - All spec files share one ree run: one `Players` service and one in-memory DataStore. Give each spec's players unique names and remove them at the end.
 - `toThrow` sees the innermost error. For code that catches and rethrows with its own message (`Lifecycle`'s `[System.Phase]`), assert with `pcall` and check the message, as `Lifecycle.spec` does.
+- Jest's runtime cannot resolve `@self/...` requires, which Charm, CharmSync and VideCharm use, so a spec cannot require them or anything that does (systems that use Charm, UI screens). Test those in a harness instead; `tests/Server/Sync.luau` runs charm-sync through `Packet.Any`.
 - `print` inside a test is captured by Jest. Warnings code under test emits (Scribe's anomalies, the known emulator gaps) appear in the run's output and are expected.
 - ree has no `debug.loadmodule` or `loadstring`, which Jest needs, and lacks a Studio service Jest probes. `tests/Server/Jest.luau` shims both; if a ree or Jest upgrade breaks specs, start there. The shim rewrites `export type` to `type` while loading modules, which is safe because nothing exports types at runtime.
 
@@ -514,6 +546,7 @@ Three offline tools run the game's own Luau and draw Roblox content without Stud
 **3D previews (ror).** Record a harness that builds what you want to see, then render it: `lune run ree record --harness <file> --out build/ree/<name> --seconds 0.2`, then `lune run ror render build/ree/<name>/scene.rbxm --out build/ror/<name> --views iso` (also `front`, `top`, `turntable:8`). `lune run ror render` also takes `.rbxm`/`.rbxl` files directly.
 
 **UI previews (rur-native).** `lune run rur render --module <file.luau> --dir build/rur/<name>` renders UI built by a module, with the project mounted as for `lune run ree`. Return the top Frame unparented; a module that returns a ScreenGui renders nothing, without a warning. For UI that needs a player, return `function(_target)` that parents the ScreenGui to `Players.LocalPlayer.PlayerGui` and add `--mode play --all-layers true`. `--model <file.rbxm>` renders a saved UI tree. Read `render.png`, and `scene.json` for every element's laid-out rectangle and text; output and errors from the module are in `scene.json` `diagnostics`. It does not see StarterGui in the place file.
+- **Previewing a screen:** a module that creates `ReplicatedStorage.ScribeTransport` with `Down` and `Up` RemoteEvents (Scribe's client needs them), requires the screen from `StarterPlayer.StarterPlayerScripts.Features.UI.UIController.Screens.<Name>`, calls its `Render` inside `Vide.root` with a stand-in context (`Controllers` holding fake getters, such as `{ AppController = { PlayerCount = function() return 12 end } }`, and no-op `Open`/`Close`), and returns the Frame. Write it under `build/`.
 
 **Use instead of the Studio MCP.** Reach for these before starting Play or running code in Studio. Each takes about a second or less unless noted. Write throwaway harnesses and variant files under `build/`; the `context.*` helpers are fields of the harness's argument.
 

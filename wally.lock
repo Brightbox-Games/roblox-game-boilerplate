@@ -3,6 +3,11 @@
 registry = "test"
 
 [[package]]
+name = "1foreverhd/topbarplus"
+version = "3.5.0"
+dependencies = []
+
+[[package]]
 name = "alicesaidhi/conch"
 version = "0.4.0"
 dependencies = [["language", "alicesaidhi/conch-language@0.4.0"]]
@@ -33,9 +38,24 @@ version = "4.0.0"
 dependencies = []
 
 [[package]]
+name = "littensy/charm"
+version = "0.11.1"
+dependencies = []
+
+[[package]]
+name = "littensy/charm-sync"
+version = "0.4.1"
+dependencies = [["Charm", "littensy/charm@0.11.1"]]
+
+[[package]]
+name = "littensy/vide-charm"
+version = "0.4.1"
+dependencies = [["Charm", "littensy/charm@0.11.1"], ["Vide", "centau/vide@0.4.1"]]
+
+[[package]]
 name = "novaware/game-boilerplate"
 version = "0.1.0"
-dependencies = [["Component", "sleitnick/component@2.4.8"], ["Conch", "alicesaidhi/conch@0.4.0"], ["ConchUi", "alicesaidhi/conch-ui@0.4.0"], ["Input", "sleitnick/input@3.0.0"], ["Iris", "sirmallard/iris@2.5.1"], ["Scribe", "ericplane/scribe@2.7.0"], ["Signal", "sleitnick/signal@2.0.3"], ["TableUtil", "sleitnick/table-util@1.2.1"], ["Trove", "sleitnick/trove@1.8.0"], ["WaitFor", "sleitnick/wait-for@1.0.0"], ["Jest", "roblox/jest@3.21.0"], ["JestGlobals", "roblox/jest-globals@3.21.0"]]
+dependencies = [["Charm", "littensy/charm@0.11.1"], ["CharmSync", "littensy/charm-sync@0.4.1"], ["Component", "sleitnick/component@2.4.8"], ["Conch", "alicesaidhi/conch@0.4.0"], ["ConchUi", "alicesaidhi/conch-ui@0.4.0"], ["Input", "sleitnick/input@3.0.0"], ["Iris", "sirmallard/iris@2.5.1"], ["Scribe", "ericplane/scribe@2.7.0"], ["Signal", "sleitnick/signal@2.0.3"], ["TableUtil", "sleitnick/table-util@1.2.1"], ["TopbarPlus", "1foreverhd/topbarplus@3.5.0"], ["Trove", "sleitnick/trove@1.8.0"], ["Vide", "centau/vide@0.4.1"], ["VideCharm", "littensy/vide-charm@0.4.1"], ["WaitFor", "sleitnick/wait-for@1.0.0"], ["Jest", "roblox/jest@3.21.0"], ["JestGlobals", "roblox/jest-globals@3.21.0"]]
 
 [[package]]
 name = "roblox/chalk-lua"

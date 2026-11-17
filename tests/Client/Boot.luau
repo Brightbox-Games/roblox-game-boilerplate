@@ -5,12 +5,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterPlayer = game:GetService("StarterPlayer")
 
 local packetsStandIn = [[
+local Signal = require(game:GetService("ReplicatedStorage").Packages.Signal)
 return setmetatable({}, {
 	__index = function(packets, name)
 		local packet = {
 			Name = name,
 			Fire = function() return nil end,
-			OnClientEvent = { Connect = function() return { Disconnect = function() end } end },
+			OnClientEvent = Signal.new(),
 		}
 		rawset(packets, name, packet)
 		return packet
@@ -52,10 +53,30 @@ return function(context: any)
 	local controllers = require(StarterPlayer.StarterPlayerScripts.App.Registry)
 	local runtime = Lifecycle.new(controllers)
 
-	check("client lifecycle starts", pcall(runtime.Start, runtime))
+	local started, problem = pcall(runtime.Start, runtime)
+	check("client lifecycle starts", started)
+	if not started then
+		print(`  {problem}`)
+	end
 	task.wait(0.5)
 	local playerGui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	check("debug UI starts for admins", playerGui ~= nil and playerGui:FindFirstChild("Iris_Root") ~= nil)
+	local hud = playerGui and playerGui:FindFirstChild("Hud")
+	check("Hud screen mounts open", hud ~= nil and hud:IsA("ScreenGui") and hud.Enabled)
+	local cashLine = hud and hud:FindFirstChild("Line1", true)
+	local playersLine = hud and hud:FindFirstChild("Line2", true)
+	check("Hud shows cash", cashLine ~= nil and cashLine:IsA("TextLabel") and cashLine.Text == "Cash: 0")
+	check(
+		"Hud shows player count",
+		playersLine ~= nil and playersLine:IsA("TextLabel") and playersLine.Text == "Players: 0"
+	)
+	local registry: { [string]: any } = {}
+	for _, controller in controllers do
+		registry[controller.Name] = controller
+	end
+	registry.UIController:Close("Hud")
+	check("UIController closes Hud", hud ~= nil and (hud :: ScreenGui).Enabled == false)
 	check("client lifecycle destroys", pcall(runtime.Destroy, runtime))
+	check("Hud is removed on destroy", hud ~= nil and hud.Parent == nil)
 	print("@done")
 end

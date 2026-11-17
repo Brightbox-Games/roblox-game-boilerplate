@@ -57,6 +57,23 @@ return function(_context: any)
 	local data = PlayerData.Get(player)
 	check("PlayerData.Get sees the write", data ~= nil and data.Cash.Get() == 25)
 
+	local synced: { [string]: any } = {}
+	local syncPacket = Packets.Sync :: any
+	syncPacket.FireClient = function(_self: any, target: Player, payloads: { any })
+		if target == player then
+			for _, payload in payloads do
+				for key, value in payload.data do
+					synced[key] = value
+				end
+			end
+		end
+	end
+	Packets.SyncReady.OnServerEvent:Fire(player)
+	check("SyncReady sends synced state", waitUntil(function()
+		return synced["Game.PlayerCount"] ~= nil
+	end, 2) and synced["Game.PlayerCount"] == 1)
+	syncPacket.FireClient = nil
+
 	player.Parent = nil
 	check("PlayerReleasing fires with final data", waitUntil(function()
 		return releasedCash ~= nil
