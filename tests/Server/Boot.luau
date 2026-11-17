@@ -1,5 +1,6 @@
 --!strict
 
+local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -45,6 +46,7 @@ return function(_context: any)
 
 	local player = Instance.new("Player")
 	player.Name = "Tester"
+	player.UserId = 4242
 	player.Parent = Players
 
 	check(
@@ -56,6 +58,34 @@ return function(_context: any)
 	check("new player starts with 0 cash", loadedCash == 0)
 	local data = PlayerData.Get(player)
 	check("PlayerData.Get sees the write", data ~= nil and data.Cash.Get() == 25)
+
+	local leaderstats = player:FindFirstChild("leaderstats")
+	local wins = leaderstats and leaderstats:FindFirstChild("Wins")
+	check("player list shows Wins", wins ~= nil and wins:IsA("NumberValue") and wins.Value == 0)
+	if data then
+		data.Wins.Increment(1)
+	end
+	check(
+		"player list follows Wins",
+		waitUntil(function()
+			return wins ~= nil and (wins :: NumberValue).Value == 1
+		end, 2)
+	)
+
+	check(
+		"TopWins board writes the score",
+		waitUntil(function()
+			local status = PlayerData.Server.GetLeaderboardStatus("TopWins")
+			return status ~= nil and status.LastWriteAt ~= nil
+		end, 10)
+	)
+	-- Studio (and ree) use LB_Studio_<board>, never the live LB_<board>
+	local board = DataStoreService:GetOrderedDataStore("LB_Studio_TopWins")
+	check("TopWins score is in the Studio store", board:GetAsync("4242") == 1)
+	check(
+		"live TopWins store is untouched",
+		DataStoreService:GetOrderedDataStore("LB_TopWins"):GetAsync("4242") == nil
+	)
 
 	local synced: { [string]: any } = {}
 	local syncPacket = Packets.Sync :: any

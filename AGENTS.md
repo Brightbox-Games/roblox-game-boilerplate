@@ -63,7 +63,7 @@ Code is grouped by layer, then by feature. Shared code is in `src/common`; each 
 | --- | --- | --- |
 | `Base` | Pure Luau with no Roblox or game knowledge: `Lifecycle`, `RateLimit` | Nothing outside itself |
 | `Platform` | Roblox-aware, game-agnostic modules: `Packet`, server `EditorOnly` | `Base` |
-| `Core` | Features the others build on: `Data` (`DataService`, `PlayerData` with `Products`), `Sync` (`SyncService`, `SyncController`), `Access` (`IsAdmin`, `AdminConfig`), `Packets`, `Assets` (generated) | `Base`, `Platform` |
+| `Core` | Features the others build on: `Data` (`DataService`, `PlayerData` with `Products` and `Leaderboards`, `ScribeLeaderstats`), `Sync` (`SyncService`, `SyncController`), `Access` (`IsAdmin`, `AdminConfig`), `Packets`, `Assets` (generated) | `Base`, `Platform` |
 | `Features` | Game features: `Admin`, `Components` (game-agnostic components such as `Spinner`), `Debug`, `Game` (`GameService`, `AppController`, `GameConfig`), `UI` | `Base`, `Platform`, `Core` |
 | `App` | The composition roots: `Bootstrap`, `Registry` and the component loader (`ComponentService`, `ComponentController`) on each side | Anything |
 
@@ -463,7 +463,7 @@ Promise, Symbol and Signal also arrive as dependencies of Component and WaitFor.
 - Never use `Packet.Any` in a packet clients can send. It accepts tables nested thousands deep with arbitrary keys, which a handler that walks or saves the value cannot safely handle. Declare a typed shape instead.
 - `src/common/Platform/Packet@Shared` (`ReplicatedStorage.Platform.Packet`) is our fork of Suphi Kaner's Packet 1.7 with local security fixes: per-packet rate limits, rejecting unbuffered client messages, binding each awaited response to its packet, checking Instance and EnumItem arguments, bounding arrays by the size of their message, erroring on over-long values instead of corrupting the stream, and keeping sends alive when one fails. It always sends buffers: the upstream unbuffered mode (`Settings.UseBuffers`) has been removed. Do not replace it with an upstream or Wally copy; port upstream fixes by hand.
 - For limits that are not per packet (per action, per target, shared across packets), use `ReplicatedStorage.Base.RateLimit` directly: `local limiter = RateLimit.new(3, 10)`, then `limiter:Allow(player)`. Call `limiter:Remove(player)` when the player leaves.
-- Packet is for actions and Scribe is for player data. Clients send requests and receive events through Packet; the server's player data reaches clients through Scribe (see Player data). Do not add packets that mirror player data.
+- Packet is for actions and one-off events, Scribe for player data, and `Core/Sync` for global state. Clients send requests and receive events (effects, popups, sounds) through Packet; the server's player data reaches clients through Scribe (see Player data), and global state such as a round phase or timer through synced Charm signals (see State). Do not add packets that mirror player data or synced state.
 - Prefer Packet over RemoteEvents and RemoteFunctions. Use attributes only for simple values that belong to an instance, such as a plot's owner or the Bootstraps' `Ready`.
 
 ### Player data
@@ -478,6 +478,18 @@ Player data is saved, typed and replicated by [Scribe](https://ericplane.github.
 - **Keep traffic small:** change the deepest field that changed, group related writes with `PlayerData.Server.Batch`, and never change player data every frame (per-frame values belong in Packet events or client-side state).
 - **Changing the template:** adding a field with a default needs nothing else; existing players get the default. Renaming, removing or changing a field's type needs a migration (see the Migrations section of Scribe's "Offline Profiles" guide). Never reset progress for invalid data.
 - **Stores:** Studio saves to `PlayerData_Studio`, live servers to `PlayerData`. Keep `ProfileStoreIndex` and `ProfileKeyPrefix` unchanged once real players have data.
+
+### Leaderboards
+
+Scribe ranks numeric player data fields; read its [Leaderboards guide](https://ericplane.github.io/Scribe/leaderboards/) before using an option not described here. Boards are declared in `src/common/Core/Data/PlayerData@Shared/Leaderboards.luau`. The example ranks `Wins`: `TopWins` (all time) and `WinsDaily` (wins gained today). Nothing increments `Wins` yet; a game does that when a player wins.
+
+- **Adding a board:** add `Name = { Stat = "<path>", Limit = 100 }`. The stat must be a saved number field that rises with progress (wins, XP, best score). Never rank a balance such as `Cash`: everyone sees it, and its movements reveal spending and gifts. Add `Period = "Daily"` or `"Weekly"` for a board that resets (it ranks the gain since the period began; `Mode = "Peak"` ranks the best value instead), or `Scope = "Server"` for the players on this server only.
+- **Stores:** each board is an OrderedDataStore, `LB_<Name>` live and `LB_Studio_<Name>` in Studio (set in `Leaderboards.luau`, matching `PlayerData_Studio`). Renaming a board starts it empty. A periodic board writes a new store each period and never deletes old ones, about 365 a year for a daily board.
+- **Cost:** each global board writes each player's changed score at most every 30 seconds (`WriteInterval`) and reads its top `Limit` every 60 seconds (`RefreshInterval`, raise it for boards that need not be fresh). Two boards on one stat cost two writes. Scribe refuses to start with more than 12 boards at the default refresh.
+- **Reading:** on the server, `PlayerData.Server.GetLeaderboard(name, count)` returns cached `{ Rank, UserId, Name, Score }` entries, `GetMyRank(player, name)` a rank within the top `Limit` (or `nil`), and `PlayerData.Server.OnLeaderboard` fires `(name, entries)` when a board changes. A board is empty until its first refresh, a few seconds to a minute after the server starts. Boards are server-only; to show one in UI, set `Replicate = true` and read `PlayerData.Client.GetLeaderboard(name, count)` and `GetMyRank(name)` in a screen (redraw on `PlayerData.Client.OnLeaderboard`, but read through `GetLeaderboard`: the signal passes Scribe's cached table, which must not be changed).
+- **Player list:** `DataService` mirrors the fields in its `LEADERSTATS` table (`Wins`) into Roblox's player list through `ScribeLeaderstats` (`src/common/Core/Data/ScribeLeaderstats@Server.luau`, Scribe's official add-on; copy it again from Scribe's `addons/leaderstats` when upgrading Scribe). Every listed value is visible to every player.
+- **Built-in leaderboard:** Roblox's Creator Hub leaderboard can show a board with no code: data store name `LB_<Name>`, key template `{UserId}`.
+- **Erasure:** for each lifetime board, add a right-to-be-forgotten deletion template in Creator Hub (ordered store `LB_<Name>`, key `{UserId}`, scope `global`) so Roblox erases its entries. Periodic boards are erased by `PlayerData.Server.Erase`.
 
 ### Purchases
 

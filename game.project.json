@@ -87,6 +87,11 @@
               "optional": "src/common/Core/Data/DataService@Server.luau"
             }
           },
+          "ScribeLeaderstats": {
+            "$path": {
+              "optional": "src/common/Core/Data/ScribeLeaderstats@Server.luau"
+            }
+          },
           "$ignoreUnknownInstances": false
         },
         "Sync": {
