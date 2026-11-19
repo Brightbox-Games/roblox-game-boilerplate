@@ -559,7 +559,25 @@ Three offline tools run the game's own Luau and draw Roblox content without Stud
 **3D previews (ror).** Record a harness that builds what you want to see, then render it: `lune run ree record --harness <file> --out build/ree/<name> --seconds 0.2`, then `lune run ror render build/ree/<name>/scene.rbxm --out build/ror/<name> --views iso` (also `front`, `top`, `turntable:8`). `lune run ror render` also takes `.rbxm`/`.rbxl` files directly.
 
 **UI previews (rur-native).** `lune run rur render --module <file.luau> --dir build/rur/<name>` renders UI built by a module, with the project mounted as for `lune run ree`. Return the top Frame unparented; a module that returns a ScreenGui renders nothing, without a warning. For UI that needs a player, return `function(_target)` that parents the ScreenGui to `Players.LocalPlayer.PlayerGui` and add `--mode play --all-layers true`. `--model <file.rbxm>` renders a saved UI tree. Read `render.png`, and `scene.json` for every element's laid-out rectangle and text; output and errors from the module are in `scene.json` `diagnostics`. It does not see StarterGui in the place file.
-- **Previewing a screen:** a module that creates `ReplicatedStorage.ScribeTransport` with `Down` and `Up` RemoteEvents (Scribe's client needs them), requires the screen from `StarterPlayer.StarterPlayerScripts.Features.UI.UIController.Screens.<Name>`, calls its `Render` inside `Vide.root` with a stand-in context (`Controllers` holding fake getters, such as `{ AppController = { PlayerCount = function() return 12 end } }`, and no-op `Open`/`Close`), and returns the Frame. Write it under `build/`.
+- **Previewing screens:** render the real client against a real server. `lune run rur render --module build/rur/<Name>.luau --dir build/rur/<Name> --mode play --run-context loopback --all-layers true` runs the place's own server scripts and the module on its client, so screens show replicated Scribe data and synced state. The module starts the controllers as the client Bootstrap does, and opens a modal screen if the preview needs one:
+
+  ```luau
+  local ReplicatedStorage = game:GetService("ReplicatedStorage")
+  local StarterPlayer = game:GetService("StarterPlayer")
+
+  return function(_target)
+  	require(ReplicatedStorage.Core.Data.PlayerData)
+  	local Lifecycle = require(ReplicatedStorage.Base.Lifecycle)
+  	local controllers = require(StarterPlayer.StarterPlayerScripts.App.Registry)
+  	Lifecycle.new(controllers):Start()
+  	-- for a modal: find UIController in `controllers` and call :Open("<Name>")
+  end
+  ```
+
+  - **A particular state** (500 cash, a full inventory): add `--server-harness build/rur/<Name>Server.luau`, which returns `{ Server = function(context) ... end }` and replaces the place's server scripts. Copy the `server` function of `tests/Loopback/Boot.luau` and set the data in its `PlayerLoaded` handler, such as `data.Cash.Set(500)`.
+  - rur exits 1 with `the story mounted, then a script error: Scribe SUBSYSTEM_HOOK_ERROR`. That is the known emulator gap (see Tests); the render is still written. Check `scene.json` `diagnostics.output` for any other error.
+  - TopbarPlus icons render in the wrong place (rur lays out its `ScreenInsets.TopbarSafeInsets` ScreenGui over the whole screen, so icons land at the bottom). Check the top bar in Studio.
+  - One player only, as in loopback tests. For a screen alone with made-up values, render its `Render` inside `Vide.root` with a stand-in `context` (fake getters in `Controllers`) instead.
 
 **Private assets and setup checks.** ror and rur download public assets themselves. To draw the group's own uploads (what `lune run assets` uploads), set `ROBLOX_ASSET_DELIVERY_API_KEY` in the environment to an Open Cloud API key; they send it only to the asset delivery route on apis.roblox.com. Never put the key in a file in the repo. `rur-native doctor` reports the install: the Studio content it reads, the account (`none: public assets only` without a key) and the ror it draws ViewportFrames with.
 
