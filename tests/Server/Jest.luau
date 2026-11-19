@@ -1,48 +1,11 @@
 --!strict
---!nolint DeprecatedApi
+
+-- Runs every Jest spec under ReplicatedStorage.Tests. Jest needs debug.loadmodule, which ree enables
+-- with --load-module (lune run test passes it for this harness).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local dataModelServiceStandIn = [[
-return function(service)
-	if service == "CoreScriptSyncService" then
-		return nil
-	end
-	local success, result = pcall(function()
-		local instance = game:GetService(service)
-		local _ = instance.Name
-		return instance
-	end)
-	return success and result or nil
-end
-]]
-
-local function loadModule(module: ModuleScript): (any, string?, (() -> ())?)
-	local source = (module :: any).Source :: string
-	source = string.gsub(source, "^export%s+type", "type")
-	source = string.gsub(source, "\n(%s*)export%s+type", "\n%1type")
-	local copy = Instance.new("ModuleScript")
-	copy.Name = module.Name;
-	(copy :: any).Source = "return function(...) " .. source .. "\nend"
-	local ok, result = pcall(require, copy)
-	if not ok then
-		return nil, tostring(result), nil
-	end
-	setfenv(result, setmetatable({ script = module }, { __index = getfenv(result) }))
-	return result, nil, function()
-		copy:Destroy()
-	end
-end
-
-return function(context: any)
-	(debug :: any).loadmodule = loadModule
-	local threadGlobals = getfenv(0) :: any
-	if threadGlobals.warn == nil then
-		threadGlobals.warn = warn
-	end
-	local shared = ReplicatedStorage.DevPackages._Index["roblox_roblox-shared@3.21.0"]["roblox-shared"]
-	context.StandIn(shared.getDataModelService, dataModelServiceStandIn)
-
+return function(_context: any)
 	local Jest = require(ReplicatedStorage.DevPackages.Jest) :: any
 	local status, result = Jest.runCLI(ReplicatedStorage.Tests, {
 		ci = true,
