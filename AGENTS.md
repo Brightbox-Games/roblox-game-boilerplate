@@ -29,7 +29,7 @@
 
 ## Scope
 
-- This is a generic game boilerplate. Keep it game-agnostic: no genre-specific systems, assets or design decisions unless the user asks. Ask before making material design decisions.
+- Ask before making material design decisions.
 - Explicit user instructions take precedence.
 
 ## Setup and checks
@@ -53,7 +53,7 @@ lune run dev
 - In Play, output shows `[Game Boilerplate] Server services ready`, `Client controllers ready` and a Packet round trip. Both Bootstraps set a `Ready` attribute.
 - `lune run check` is the one command to run after every change. It formats `src`, `.lune` and `tests` with StyLua, rejects empty folders in `src`, writes the project files and runs `rogen check` (any routing warning fails), then for every place regenerates the sourcemap, runs luau-lsp type and lint analysis and the `require_boundaries` lint (see Require boundaries) on that place's files, and does a Rojo build of `<place>.project.json` into `build/<place>.rbxlx`. `lune run check --frozen` checks formatting and project files without writing them, for CI. Fix every error it reports and rerun it until it passes.
 - `rojo build` output is code-only, not a replacement for the authored place.
-- **Starting a new game from this boilerplate:** set `Name` in `src/common/Features/Game/GameConfig@Shared.luau`, set `name` in `game.rogen.json`, set `[creator] id` in `asphalt.toml` to the game's Roblox group ID, put the game's admins in `src/common/Core/Access/AdminConfig.luau`, and add `servePlaceIds` once the place exists.
+- **Starting a new game from this boilerplate:** set `Name` in `src/common/Features/Game/GameConfig@Shared.luau`, set `name` in `game.rogen.json`, set `[creator] id` in `asphalt.toml` to the game's Roblox group ID, put the game's admins in `src/common/Core/Access/AdminConfig.luau`, and add `servePlaceIds` once the place exists. Rename the title of this file to the game's name.
 
 ## Layout
 
